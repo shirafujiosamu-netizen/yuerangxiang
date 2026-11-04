@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>黄昏之门 · 月壤厢</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header id="topbar">
+  <div class="title-block">
+    <h1>黄昏之门</h1>
+    <p class="subtitle">当前区域：月壤厢<span class="subtitle-dim">（愚银之厢 / 杂物盒）</span></p>
+  </div>
+  <nav id="nav">
+    <button class="nav-btn" data-view="business">门面</button>
+    <button class="nav-btn" data-view="compartment">厢体</button>
+    <button class="nav-btn" data-view="skilltree">技能树</button>
+    <button class="nav-btn" data-view="casino">赌场</button>
+  </nav>
+  <div id="hud">
+    <div class="hud-item"><span class="hud-label">描述</span><span class="hud-value" id="hud-desc">0</span></div>
+    <div class="hud-item"><span class="hud-label">情绪</span><span class="hud-value" id="hud-mood">0</span></div>
+    <div class="hud-item hud-pollution">
+      <span class="hud-label">污染度</span>
+      <div class="pollution-bar"><div class="pollution-fill" id="pollution-fill"></div></div>
+      <span class="hud-value" id="hud-pollution">0%</span>
+    </div>
+    <div class="hud-item hud-completed" id="hud-completed" style="display:none"><span class="hud-label">已完成</span><span class="hud-value" id="hud-completed-val"></span></div>
+  </div>
+</header>
+
+<main id="view"><!-- 由 ui.js 渲染 --></main>
+
+<div id="modal-root"></div>
+
+<!-- 普通 script 顺序加载，共享全局命名空间 DG；file:// 下无 fetch / 无 ES module -->
+<script src="js/data.js"></script>
+<script src="js/core.js"></script>
+<script src="js/state.js"></script>
+<script src="js/pollution.js"></script>
+<script src="js/skilltree.js"></script>
+<script src="js/casino.js"></script>
+<script src="js/blackjack.js"></script>
+<script src="js/roulette.js"></script>
+<script src="js/slots.js"></script>
+<script src="js/sicbo.js"></script>
+<script src="js/baccarat.js"></script>
+<script src="js/events.js"></script>
+<script src="js/house.js"></script>
+<script src="js/funeral.js"></script>
+<script src="js/archive.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

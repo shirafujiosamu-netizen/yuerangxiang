@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>月壤厢 · 门面 样张</title>
+<style>
+  :root{
+    --bg:#15120e;
+    --bg2:#1d1913;
+    --paper:#efe7d6;
+    --paper2:#e6dcc7;
+    --ink:#20201c;
+    --ink2:#5d5a50;
+    --seal:#a3342a;
+    --gold:#a98b5b;
+    --line:rgba(239,231,214,.14);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:"Source Han Serif SC","Noto Serif CJK SC","Songti SC",SimSun,serif;
+    background:
+      radial-gradient(900px 420px at 62% -8%, rgba(255,214,150,.10), transparent 70%),
+      radial-gradient(700px 500px at 8% 110%, rgba(120,80,50,.12), transparent 70%),
+      linear-gradient(180deg,#1a1610 0%, #12100c 100%);
+    color:var(--paper);
+    height:100vh;overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  /* 纸纹 */
+  body::after{
+    content:"";position:fixed;inset:0;pointer-events:none;opacity:.5;
+    background-image:
+      repeating-linear-gradient(90deg, rgba(255,255,255,.018) 0 1px, transparent 1px 3px),
+      repeating-linear-gradient(0deg, rgba(0,0,0,.05) 0 1px, transparent 1px 4px);
+    mix-blend-mode:overlay;
+  }
+
+  .wrap{display:flex;height:100vh}
+
+  /* 左侧竖向标签 */
+  .rail{
+    width:96px;flex:0 0 96px;border-right:1px solid var(--line);
+    display:flex;flex-direction:column;align-items:center;
+    padding:26px 0 20px;gap:26px;
+    background:linear-gradient(180deg, rgba(0,0,0,.28), rgba(0,0,0,.5));
+  }
+  .rail .mark{
+    font-size:11px;letter-spacing:.42em;color:var(--gold);opacity:.85;
+    writing-mode:vertical-rl;text-orientation:upright;
+  }
+  .rail .tabs{display:flex;flex-direction:column;gap:20px;margin-top:10px}
+  .tab{
+    writing-mode:vertical-rl;text-orientation:upright;
+    font-size:14px;letter-spacing:.34em;color:rgba(239,231,214,.45);
+    padding:2px;position:relative;
+  }
+  .tab.on{color:var(--paper)}
+  .tab.on::after{
+    content:"";position:absolute;left:-9px;top:2px;width:5px;height:5px;
+    border-radius:50%;background:var(--seal);
+  }
+
+  /* 主区 */
+  .main{flex:1;padding:34px 46px 30px;display:flex;flex-direction:column;gap:18px;position:relative;justify-content:space-between}
+
+  .head{display:flex;align-items:flex-end;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:16px}
+  .title{display:flex;align-items:baseline;gap:16px}
+  .title h1{font-size:40px;font-weight:600;letter-spacing:.2em}
+  .title .sub{font-size:12px;letter-spacing:.24em;color:rgba(239,231,214,.45)}
+  .ledger{display:flex;gap:34px;align-items:baseline}
+  .ledger .kv{text-align:right}
+  .ledger .k{font-size:11px;letter-spacing:.3em;color:rgba(239,231,214,.4);display:block;margin-bottom:4px}
+  .ledger .v{font-size:23px;letter-spacing:.06em}
+  .ledger .v small{font-size:12px;color:rgba(239,231,214,.45);margin-left:3px}
+
+  /* 桌面 */
+  .desk{flex:1;display:flex;gap:34px;align-items:center;padding-top:6px}
+
+  /* 单据纸 */
+  .slip{
+    width:520px;flex:0 0 auto;background:
+      linear-gradient(168deg, var(--paper) 0%, var(--paper2) 100%);
+    color:var(--ink);border-radius:2px;padding:30px 34px 26px;
+    box-shadow:0 22px 46px -18px rgba(0,0,0,.85), 0 2px 0 rgba(255,255,255,.5) inset;
+    transform:rotate(-.55deg);position:relative;
+  }
+  .slip::before{ /* 纸边阴影 */
+    content:"";position:absolute;inset:0;border-radius:2px;
+    background:radial-gradient(140% 90% at 50% 0%, rgba(255,255,255,.55), transparent 60%);
+    pointer-events:none;
+  }
+  .slip .no{
+    display:flex;justify-content:space-between;align-items:center;
+    font-size:11px;letter-spacing:.3em;color:#8a8371;border-bottom:1px solid rgba(32,32,28,.18);
+    padding-bottom:10px;margin-bottom:18px;
+  }
+  .slip .who{display:flex;align-items:baseline;gap:14px}
+  .slip .who b{font-size:33px;font-weight:600;letter-spacing:.08em}
+  .slip .who span{font-size:15px;color:var(--ink2)}
+  .slip .state{margin-top:8px;font-size:15px;color:var(--ink2);letter-spacing:.12em}
+  .slip dl{margin-top:20px;display:grid;grid-template-columns:64px 1fr;gap:12px 14px;font-size:15px;line-height:1.75}
+  .slip dt{color:#8a8371;letter-spacing:.16em;font-size:13px;padding-top:2px}
+  .slip dd{color:var(--ink)}
+  .slip .quote{font-style:normal}
+  .slip .quote::before{content:"「"} .slip .quote::after{content:"」"}
+
+  /* 步骤条 */
+  .steps{display:flex;align-items:center;gap:0;margin-top:26px;padding-top:18px;padding-right:34px;border-top:1px solid rgba(32,32,28,.18)}
+  .st{display:flex;align-items:center;gap:8px;font-size:13.5px;color:#9a9384;letter-spacing:.1em;white-space:nowrap}
+  .st i{width:13px;height:13px;border:1px solid #b3ab98;border-radius:50%;display:block}
+  .st.done{color:#6b6558}
+  .st.done i{background:#6b6558;border-color:#6b6558}
+  .st.now{color:var(--seal)}
+  .st.now i{border-color:var(--seal);box-shadow:0 0 0 3px rgba(163,52,42,.16)}
+  .st + .st::before{content:"";width:16px;height:1px;background:rgba(32,32,28,.2);margin:0 8px;display:block}
+
+  /* 选单 */
+  .choices{flex:1;padding-top:6px}
+  .choices .lead{font-size:13px;letter-spacing:.28em;color:rgba(239,231,214,.42);margin-bottom:18px}
+  .opt{
+    display:flex;gap:16px;align-items:flex-start;
+    padding:16px 18px;margin-bottom:12px;
+    border:1px solid rgba(239,231,214,.13);
+    background:linear-gradient(180deg, rgba(255,248,232,.035), rgba(255,248,232,.012));
+    color:rgba(239,231,214,.9);font-size:16px;line-height:1.6;letter-spacing:.04em;
+    position:relative;
+  }
+  .opt .box{
+    flex:0 0 auto;width:15px;height:15px;border:1px solid rgba(239,231,214,.45);margin-top:4px;
+  }
+  .opt .hint{display:block;margin-top:6px;font-size:12.5px;color:rgba(239,231,214,.4);letter-spacing:.1em}
+  .opt.sel{border-color:rgba(163,52,42,.55);background:linear-gradient(180deg, rgba(163,52,42,.12), rgba(163,52,42,.04))}
+  .opt.sel .box{border-color:var(--seal);background:var(--seal)}
+
+  /* 时辰 */
+  .clock{display:flex;align-items:center;gap:16px;margin-bottom:24px}
+  .dial{width:54px;height:54px;border:1px solid rgba(239,231,214,.28);border-radius:50%;position:relative;flex:0 0 auto}
+  .dial::after{content:"";position:absolute;left:50%;top:50%;width:1px;height:17px;background:rgba(239,231,214,.62);transform-origin:50% 0;transform:rotate(52deg)}
+  .dial::before{content:"";position:absolute;left:50%;top:50%;width:3px;height:3px;margin:-1.5px 0 0 -1.5px;border-radius:50%;background:rgba(239,231,214,.72)}
+  .clock .txt{font-size:12px;letter-spacing:.24em;color:rgba(239,231,214,.42);line-height:1.9}
+  .clock .txt b{display:block;font-size:13px;color:rgba(239,231,214,.66);letter-spacing:.2em;font-weight:400}
+
+  /* 底部账条 */
+  .foot{display:flex;align-items:flex-end;justify-content:space-between;gap:30px;padding-top:8px}
+  .foot .recs{display:flex;gap:10px}
+  .rec{
+    background:linear-gradient(168deg,var(--paper) 0%,var(--paper2) 100%);color:var(--ink);
+    padding:10px 14px;font-size:12.5px;letter-spacing:.1em;line-height:1.7;
+    box-shadow:0 10px 18px -12px rgba(0,0,0,.9);opacity:.92;
+  }
+  .rec b{font-weight:600;font-size:14px;letter-spacing:.12em;display:block}
+  .rec span{color:#7d7666}
+  .act{
+    border:1px solid rgba(163,52,42,.62);color:#e8c9c3;background:rgba(163,52,42,.12);
+    padding:14px 26px;font-size:15px;letter-spacing:.3em;font-family:inherit;cursor:default;
+  }
+  .act.dim{border-color:rgba(239,231,214,.2);color:rgba(239,231,214,.5);background:transparent}
+
+  /* 便条 */
+  .note{
+    width:280px;text-align:right;
+    font-size:13px;line-height:2;color:rgba(239,231,214,.4);letter-spacing:.08em;
+    border-right:1px solid rgba(239,231,214,.14);padding-right:16px;
+  }
+  .note b{color:rgba(239,231,214,.66);font-weight:400;display:block;margin-bottom:6px}
+
+  /* 印章 */
+  .seal{
+    position:absolute;right:24px;bottom:78px;width:66px;height:66px;border:2px solid var(--seal);
+    color:var(--seal);border-radius:4px;display:flex;align-items:center;justify-content:center;
+    font-size:26px;letter-spacing:.06em;transform:rotate(8deg);opacity:.82;
+    box-shadow:0 0 0 1px rgba(163,52,42,.25) inset;
+  }
+
+  /* ===== 门面页 ===== */
+  .shop-grid{flex:1;display:grid;grid-template-columns:repeat(3, minmax(0,1fr));gap:18px;align-content:start;padding-top:4px}
+    .card{
+    border:1px solid rgba(239,231,214,.12);padding:24px 24px 22px;position:relative;
+    background:linear-gradient(180deg, rgba(255,248,232,.04), rgba(255,248,232,.012));
+    min-height:196px;
+  }
+  .card .nm{font-size:23px;letter-spacing:.14em}
+  .card .how{margin-top:16px;font-size:12.5px;line-height:1.9;color:rgba(239,231,214,.34);letter-spacing:.08em;padding-right:40px}
+  .card .gd{margin-top:9px;font-size:12.5px;letter-spacing:.16em;color:rgba(239,231,214,.42)}
+  .card .sh{margin-top:20px;font-size:14px;letter-spacing:.2em;color:rgba(239,231,214,.78)}
+  .card .st2{position:absolute;right:18px;bottom:16px;font-size:11px;letter-spacing:.3em;color:rgba(239,231,214,.3)}
+  .card.open{background:linear-gradient(180deg, rgba(255,238,206,.09), rgba(255,238,206,.02));border-color:rgba(201,167,110,.35)}
+  .card.open .st2{color:var(--seal)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="rail">
+    <div class="mark">月壤厢</div>
+    <div class="tabs">
+      <div class="tab on">门面</div>
+      <div class="tab">厢体</div>
+      <div class="tab">技能</div>
+      <div class="tab">赌场</div>
+    </div>
+  </div>
+
+  <div class="main" id="app"></div>
+</div>
+
+<script>
+var state = new URLSearchParams(location.search).get('s') || 'order';
+
+function orderScreen(){
+  return ''
+  + '<div class="head">'
+  +   '<div class="title"><h1>殡仪馆</h1><span class="sub">完人之门 · 供奉 未型 / Eidos</span></div>'
+  +   '<div class="ledger">'
+  +     '<div class="kv"><span class="k">钱</span><span class="v">1,280</span></div>'
+  +     '<div class="kv"><span class="k">体面</span><span class="v">54</span></div>'
+  +     '<div class="kv"><span class="k">经手</span><span class="v">3<small>单</small></span></div>'
+  +   '</div>'
+  + '</div>'
+  + '<div class="desk">'
+  +   '<div class="slip">'
+  +     '<div class="seal">收</div>'
+  +     '<div class="no"><span>第 四 号</span><span>九月十一 · 阴</span></div>'
+  +     '<div class="who"><b>沈老师</b><span>八十三</span></div>'
+  +     '<div class="state">睡着没醒</div>'
+  +     '<dl>'
+  +       '<dt>家属</dt><dd>教过的学生，来了一屋子</dd>'
+  +       '<dt>交代</dt><dd class="quote">别搞那些排场，说话就行。</dd>'
+  +     '</dl>'
+  +     '<div class="steps">'
+  +       '<div class="st done"><i></i>收尸</div>'
+  +       '<div class="st now"><i></i>洗身</div>'
+  +       '<div class="st"><i></i>穿衣</div>'
+  +       '<div class="st"><i></i>念辞</div>'
+  +       '<div class="st"><i></i>出殡</div>'
+  +     '</div>'
+  +   '</div>'
+  +   '<div class="choices">'
+  +     '<div class="clock"><div class="dial"></div><div class="txt"><b>九月十一 · 酉时</b>今日还剩一刻</div></div>'
+  +     '<div class="lead">洗　身</div>'
+  +     '<div class="opt sel"><span class="box"></span><span>亲自动手<span class="hint">水要温的。手上会沾到东西，落一笔体面。</span></span></div>'
+  +     '<div class="opt"><span class="box"></span><span>让工人上手<span class="hint">快，但有些人看得出来是谁洗的。</span></span></div>'
+  +     '<div class="opt"><span class="box"></span><span>只擦脸，别的不动<span class="hint">省事。家属多半也不会掀开看。</span></span></div>'
+  +   '</div>'
+  + '</div>'
+  + '<div class="foot">'
+  +   '<div class="recs">'
+  +     '<div class="rec"><b>周三德</b>六十七 · 孤老 · <span>照规矩</span></div>'
+  +     '<div class="rec"><b>林巧</b>三十一 · 车祸 · <span>体面：补过脸</span></div>'
+  +     '<div class="rec"><b>不知名的男人</b>— · 无名 · <span>只记了日子</span></div>'
+  +   '</div>'
+  +   '<div class="note"><b>这一单的账</b>体面换钱，钱换手艺，手艺换下一单。别想着三样都拿。</div>'
+  + '</div>';
+}
+
+function shopScreen(){
+  var cards = [
+    ['完人之门','未型 / Eidos','殡仪馆','开门',1,'长辈留下的门面。九月开学，你在课上遇见未型。'],
+    ['全能之门','无限（Ótakmarkað）','旧书店 · 档案','未开工',0,'失业那年继承的书店，还有一柜子没写完的档案。'],
+    ['未知信仰','Ω','酒馆 · 猫径 Catway','未开工',0,'里层那间酒馆。客人付钱，讲一个故事。'],
+    ['壹祖','壹祖 / 遗祖','寺庙','未开工',0,'香火钱、素斋、超度法事。献身为佛。'],
+    ['势宗','Euthanasie','面馆','未开工',0,'一碗面管一天。不老河的事，客人自己会说。']
+  ];
+  var g = cards.map(function(c){
+    return '<div class="card'+(c[4]?' open':'')+'">'
+      + '<div class="nm">'+c[0]+'</div>'
+      + '<div class="gd">供奉 '+c[1]+'</div>'
+      + '<div class="sh">'+c[2]+'</div>'
+      + (c[5] ? '<div class="how">'+c[5]+'</div>' : '')
+      + '<div class="st2">'+c[3]+'</div></div>';
+  }).join('');
+  return ''
+  + '<div class="head">'
+  +   '<div class="title"><h1>门面</h1><span class="sub">先有个能收钱的地方，再把人和钱往上供</span></div>'
+  +   '<div class="ledger">'
+  +     '<div class="kv"><span class="k">钱</span><span class="v">1,280</span></div>'
+  +     '<div class="kv"><span class="k">体面</span><span class="v">54</span></div>'
+  +     '<div class="kv"><span class="k">经手</span><span class="v">3<small>单</small></span></div>'
+  +   '</div>'
+  + '</div>'
+  + '<div class="shop-grid">'+g+'</div>'
+  + '<div class="foot">'
+  +   '<div class="note" style="text-align:left;border-right:none;border-left:1px solid rgba(239,231,214,.14);padding-left:16px;padding-right:0"><b>还没想好</b>另外四条线开在哪一年、由谁引你进去，等你写。</div>'
+  +   '<button class="act">接 一 单</button>'
+  + '</div>';
+}
+
+document.getElementById('app').innerHTML = (state === 'shop') ? shopScreen() : orderScreen();
+</script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+{
+ "project_id": "dusk-gate-oc",
+ "title": "黄昏之门（首个区域：月壤厢）",
+ "goal": "OC 经营放置 demo：收容 guð→产出描述/情绪→技能树升级+赌场搏杀→扩建厢体→污染度与收容失效事件。验收四件事：放 3 个 guð 产出、技能树点出一条分支、赌场赌完一局、处理一次收容失效。",
+ "stack": "html-js",
+ "platform": "Steam/PC (终极目标)，demo 期浏览器",
+ "synthetic_example": false,
+ "tasks": [
+  {
+   "id": "T1",
+   "title": "档案卡系统 + 资源产出循环",
+   "status": "doing"
+  },
+  {
+   "id": "T2",
+   "title": "技能树界面 + Ótakmarkað 看板",
+   "status": "todo"
+  },
+  {
+   "id": "T3",
+   "title": "赌场 + Eidos 庄家 + 三级赌注",
+   "status": "todo"
+  },
+  {
+   "id": "T4",
+   "title": "污染度 + 收容失效事件",
+   "status": "todo"
+  },
+  {
+   "id": "T5",
+   "title": "占位图接入 + 存档",
+   "status": "todo"
+  }
+ ],
+ "decisions": [
+  "游戏名《黄昏之门》总标题，月壤厢为第一个可玩区域（异常层）；表现层=大学/教派/赌场",
+  "单位形态=档案卡（69 OC 模板+color 配色），立绘只画 Ótakmarkað/Eidos 两张看板",
+  "Ótakmarkað=技能树看板（点技能即'备注'，台词用档案 quotes）；Eidos=赌场常驻庄家（赔率永远公平）",
+  "赌注三级：描述→情绪→存在；连输到极点被'完成'（完美但不再说话）",
+  "恐怖基调=档案式平静+挂机时厢体深处生变；失败文案=「备注：灭门」",
+  "yield 分化：月壤厢=desc 体系，黄昏之门=mood 体系",
+  "demo 平台=纯 HTML/JS 无构建，双击即玩；上架前 Electron 打包",
+  "美术 demo 期用 AI 占位图（用户授权），最终立绘用户自绘（Eidos 三视图已交付，红黄黑戏服+触手）"
+ ],
+ "known_issues": [
+  "rarity 由 archetype 正则粗分，DISASTER 仅 2 个（朗娅等），正式稀有度表待数值成员定",
+  "OC 档案 color 字段与实际立绘有色差（Eidos 档案 #f7768e vs 实画红黄），视觉以立绘为准，档案色值待更新"
+ ],
+ "feedback": null,
+ "artifact_paths": [
+  "F://job//oc-game//data//oc_dataset.json",
+  "F://job//oc-game//data//oc_raw.json"
+ ],
+ "artifact_root": "F:/job/oc-game"
+}

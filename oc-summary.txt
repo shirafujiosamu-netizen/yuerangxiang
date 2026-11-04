@@ -1,0 +1,28 @@
+WORLD | 月壤厢（愚银之厢 / 杂物盒） | 世界是一个没有边界的杂物盒，装满各式杂物；杂物内部又有各自有意识的「原子」。Ótakmarkað 等 guð 正是这样的原子。宇宙之外还有「
+WORLD | 全知教 | 以「全知全能神」为信仰的诈骗组织，教徒多是被动入教或引路人带领。主教 Z 之下设「祭司」。教义指向神，但只有「无限」可被明确描述，却又因太无
+WORLD | 现世故事集 | 若干独立短篇的主角与梦。公路旅行、教堂三人、雨夜系统、海嗣入侵……彼此不一定同框。
+WORLD | 黄昏之门 | 主角上大学后被引荐入教，逐步发现十三派系供奉的「邪神」真实存在。派系：全能之门、三一教、全真教、未知信仰、壹祖、真一教、归心教、完人之门、真
+--- first 20 ocs ---
+OC | Ótakmarkað（无限） | w_yuelian | 
+OC | Gott og illt | w_yuelian | 
+OC | eilífð | w_yuelian | 
+OC | fullkomið | w_yuelian | 
+OC | 祁鸩 | w_yuelian | 
+OC | 景致离 | w_yuelian | 
+OC | 晦 | w_yuelian | 
+OC | 莫里茵·利维坦 | w_yuelian | 
+OC | 着棋 | w_yuelian | 
+OC | 档案 | w_yuelian | 
+OC | 朗娅 | w_quanzhi | 
+OC | Z 主教（全知教主教） | w_quanzhi | 
+OC | 伊戈罗纳克 | w_story | 
+OC | 神父 | w_story | 
+OC | 小男孩 | w_story | 
+OC | 政治家 | w_story | 
+OC | 边延城 | w_story | 
+OC | 曲久 | w_story | 
+OC | 都韫 | w_story | 
+OC | 牧绀 | w_story | 
+ocs=69
+oc keys: ['id', 'name', 'archetype', 'worldId', 'age', 'origin', 'hobby', 'color', 'six', 'trait', 'hook', 'background', 'quotes', 'relations', 'palette']
+world keys: ['id', 'name', 'desc', 'color', 'chronicle']

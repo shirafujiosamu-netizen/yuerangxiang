@@ -1,0 +1,1151 @@
+extends Node3D
+## 黄昏之门 · 殡仪馆大厅
+## 鼠标右键拖动转视角，WASD 走动，左键点门/柜台/牌子，Esc 关面板。
+## 资源三样：钱（现金）、口碑（街坊信任）、时辰（今天还剩几格）。
+
+const ROOM := preload("res://assets/lobby.glb")
+const CASINO := preload("res://assets/casino.glb")
+const UNIVERSITY := preload("res://assets/university.glb")
+const BOOKSHOP := preload("res://assets/bookshop.glb")
+
+# 黑白红
+const WHITE := Color(0.94, 0.93, 0.91)
+const GREY := Color(0.58, 0.56, 0.54)
+const RED := Color(0.72, 0.20, 0.14)          # 印泥红
+const RED_SOFT := Color(0.82, 0.36, 0.30)
+const GLASS_ALPHA := 0.60
+
+var cam: Camera3D
+var room_node: Node3D
+var casino_node: Node3D
+var university_node: Node3D
+var bookshop_node: Node3D
+var cur_room := 0
+var back_btn: Label
+var room_title: Label
+var casino_lights: Array[Node] = []
+var yaw := 0.0
+var pitch := -0.02
+var dragging := false
+var current := -1
+
+var hover_box: PanelContainer
+var hover_label: Label
+var panel: PanelContainer
+var panel_title: Label
+var panel_body: Label
+var panel_open := false
+
+var settings_panel: PanelContainer
+var settings_open := false
+
+var game = preload("res://src/game.gd").new()
+
+var chip_day: Label
+var chip_money: Label
+var chip_rep: Label
+var chip_hours: Label
+
+var travel_box: VBoxContainer
+var table_panel: PanelContainer
+var table_box: VBoxContainer
+var table_open := false
+var work_panel: PanelContainer
+var work_box: VBoxContainer
+var work_scroll: ScrollContainer
+var work_open := false
+var _msg: String = "":
+	set(v):
+		_msg = v
+		if v != "" and is_instance_valid(status_label):
+			status_label.text = v
+var status_label: Label
+var ui_layer: CanvasLayer
+var title_overlay: Control
+var planet_screen: Control
+var micro_line: Label = null
+var summary_panel: PanelContainer
+var started := false
+var title: TitleScene
+var world_env: Environment
+
+# Blender (x, y, z) 换算成 Godot (x, z, -y)
+var hotspots := [
+	{"name": "服务台", "pos": Vector3(-7.6, 1.55, -4.4), "kind": "counter",
+		"desc": "办手续、问价钱、看今天有几单。"},
+	{"name": "停尸间", "pos": Vector3(-8.4, 1.9, -9.82), "kind": "door",
+		"desc": "里头的灯常年亮着，冷气从门缝往外渗。"},
+	{"name": "葬礼会堂", "pos": Vector3(0.0, 1.9, -9.82), "kind": "door",
+		"desc": "在办一场，念辞的人声音很稳。"},
+	{"name": "焚化炉", "pos": Vector3(8.4, 1.9, -9.82), "kind": "door",
+		"desc": "排到明天下午，师傅说要先冷一冷。"},
+	{"name": "墓园", "pos": Vector3(-12.82, 1.9, 3.0), "kind": "exit",
+		"desc": "往左出去。石碑一排一排，草刚剪过。"},
+	{"name": "丧葬用品店", "pos": Vector3(12.82, 1.9, 4.4), "kind": "shop",
+		"desc": "寿衣、骨灰盒、香烛，明码标价。"},
+	{"name": "卫生间", "pos": Vector3(12.82, 1.9, -0.4), "kind": "door",
+		"desc": "洗手台的水一直没关紧。"},
+	{"name": "餐厅", "pos": Vector3(12.82, 1.9, -5.0), "kind": "door",
+		"desc": "两荤一素十五块，家属多半吃不下。"},
+	{"name": "业务公示", "pos": Vector3(-12.8, 2.55, -6.6), "kind": "board",
+		"desc": "价目、流程、投诉电话，纸角都卷了。"},
+]
+
+var university_spots := [
+	{"name": "阶梯教室", "pos": Vector3(-4.4, 1.25, -2.2), "kind": "uni_lesson",
+		"desc": "门开着，里面正在讲丧礼。"},
+	{"name": "旧档室", "pos": Vector3(0.2, 1.30, -4.6), "kind": "uni_archive",
+		"desc": "一屋子卷宗，落灰落得比人高。"},
+	{"name": "走廊", "pos": Vector3(4.6, 1.25, -2.4), "kind": "uni_hire",
+		"desc": "几个学生在抽烟，找活干。"},
+]
+
+var casino_spots := [
+	{"name": "赌桌", "pos": Vector3(0.0, 1.05, -1.2), "kind": "table",
+		"desc": "押大押小，三同通杀。"},
+	{"name": "吧台", "pos": Vector3(9.0, 1.3, -1.0), "kind": "bar",
+		"desc": "酒是假的，冰块是真的。"},
+	{"name": "老虎机", "pos": Vector3(-9.0, 1.3, -1.0), "kind": "slot",
+		"desc": "三个铃铛，二十年没中过。"},
+]
+
+
+func _spots() -> Array:
+	match cur_room:
+		1:
+			return casino_spots
+		2:
+			return university_spots
+	return hotspots
+
+
+func _ready() -> void:
+	room_node = ROOM.instantiate()
+	add_child(room_node)
+	casino_node = CASINO.instantiate()
+	add_child(casino_node)
+	casino_node.visible = false
+	university_node = UNIVERSITY.instantiate()
+	add_child(university_node)
+	university_node.visible = false
+	bookshop_node = BOOKSHOP.instantiate()
+	add_child(bookshop_node)
+	bookshop_node.visible = false
+
+	_setup_audio()
+	_setup_environment()
+	_setup_lights()
+
+	for _a in OS.get_cmdline_user_args():
+		if _a.begins_with("--shot"):
+			_capture.call_deferred()
+			break
+
+	cam = Camera3D.new()
+	cam.position = Vector3(1.2, 1.68, 7.4)
+	cam.fov = 68.0
+	cam.near = 0.05
+	add_child(cam)
+	yaw = 0.0
+	_apply_look()
+
+	_setup_ui()
+
+	room_node.visible = false
+	if world_env != null:
+		world_env.background_color = Color(0.008, 0.009, 0.016)
+		world_env.ambient_light_energy = 0.20
+	if is_instance_valid(status_label):
+		status_label.visible = false
+
+	title = TitleScene.new()
+	title.name = "TitleScreen"
+	add_child(title)
+	title.setup(cam)
+	title.picked.connect(_on_planet_picked)
+
+
+func _setup_environment() -> void:
+	var we := WorldEnvironment.new()
+	var env := Environment.new()
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = Color(0.07, 0.07, 0.08)
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.58, 0.58, 0.60)
+	env.ambient_light_energy = 0.8
+	env.tonemap_mode = Environment.TONE_MAPPER_AGX
+	env.glow_enabled = true
+	env.glow_intensity = 0.18
+	env.ssao_enabled = true
+	we.environment = env
+	world_env = env
+	add_child(we)
+
+
+func _setup_lights() -> void:
+	var sun := DirectionalLight3D.new()
+	sun.light_energy = 0.55
+	sun.light_color = Color(1.0, 0.97, 0.93)
+	sun.rotation = Vector3(deg_to_rad(-58), deg_to_rad(24), 0)
+	sun.shadow_enabled = true
+	add_child(sun)
+
+	for spec in [
+		{"p": Vector3(0, 4.4, 2.0), "e": 6.0, "r": 16.0},
+		{"p": Vector3(-7.0, 4.2, -5.0), "e": 4.0, "r": 12.0},
+		{"p": Vector3(7.0, 4.2, -5.0), "e": 4.0, "r": 12.0},
+	]:
+		var l := OmniLight3D.new()
+		l.position = spec["p"]
+		l.light_energy = spec["e"]
+		l.omni_range = spec["r"]
+		l.light_color = Color(1.0, 0.97, 0.92)
+		add_child(l)
+
+
+# ---------- 毛玻璃（黑白红） ----------
+
+func _glass(alpha: float, radius: int) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = Color(0.04, 0.04, 0.045, alpha)
+	s.border_color = Color(1.0, 1.0, 1.0, 0.16)
+	s.set_border_width_all(1)
+	s.set_corner_radius_all(radius)
+	s.shadow_color = Color(0, 0, 0, 0.4)
+	s.shadow_size = 16
+	s.shadow_offset = Vector2(0, 4)
+	s.content_margin_left = 20
+	s.content_margin_right = 20
+	s.content_margin_top = 16
+	s.content_margin_bottom = 16
+	s.expand_margin_left = 8
+	s.expand_margin_right = 8
+	s.expand_margin_top = 8
+	s.expand_margin_bottom = 12
+	return s
+
+
+func _make_label(text: String, size: int, color: Color) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", color)
+	return l
+
+
+func _setup_audio() -> void:
+	var amb := AudioStreamPlayer.new()
+	amb.stream = load("res://audio/ambient.wav")
+	amb.volume_db = -16.0
+	add_child(amb)
+	amb.finished.connect(amb.play)
+	amb.play()
+
+
+func _sfx(path: String, vol := -6.0) -> void:
+	var p := AudioStreamPlayer.new()
+	p.stream = load(path)
+	p.volume_db = vol
+	add_child(p)
+	p.finished.connect(p.queue_free)
+	p.play()
+
+
+func _setup_ui() -> void:
+	var layer := CanvasLayer.new()
+	add_child(layer)
+
+	# 标题：纯文字，不带框。红竖条 + 白字。
+	var bar := ColorRect.new()
+	bar.color = RED
+	bar.position = Vector2(30, 26)
+	bar.size = Vector2(4, 34)
+	layer.add_child(bar)
+	room_title = _make_label("完人之门 · 殡仪馆", 22, WHITE)
+	room_title.position = Vector2(46, 26)
+	room_title.size = Vector2(760, 34)
+	room_title.clip_text = false
+	layer.add_child(room_title)
+
+	# 右上：设置
+	var gear := Button.new()
+	gear.text = "设置"
+	gear.flat = false
+	gear.add_theme_font_size_override("font_size", 15)
+	gear.add_theme_color_override("font_color", GREY)
+	gear.add_theme_color_override("font_hover_color", WHITE)
+	gear.add_theme_stylebox_override("normal", _glass(0.5, 12))
+	gear.add_theme_stylebox_override("hover", _glass(0.7, 12))
+	gear.add_theme_stylebox_override("pressed", _glass(0.8, 12))
+	gear.position = Vector2(0, 24)
+	gear.pressed.connect(_open_settings)
+	layer.add_child(gear)
+
+	# 顶中：状态行（最近一件事）
+	status_label = _make_label("", 16, Color(0.82, 0.80, 0.77, 0.95))
+	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	status_label.anchor_left = 0.5
+	status_label.anchor_right = 0.5
+	status_label.offset_left = -420
+	status_label.offset_right = 420
+	status_label.offset_top = 74
+	status_label.add_theme_stylebox_override("normal", _glass(0.5, 12))
+	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	layer.add_child(status_label)
+
+	# 制图框：四角对准线 + 底部一行微字
+	_add_draft_frame(layer)
+
+	# 左下：资源（天 / 钱 / 口碑三群 / 时辰）
+	var hud := HBoxContainer.new()
+	hud.add_theme_constant_override("separation", 10)
+	hud.position = Vector2(30, 0)
+	layer.add_child(hud)
+	chip_day = _make_label("第 1 天", 14, GREY)
+	hud.add_child(_wrap_chip("天", chip_day))
+	chip_money = _make_label("¥ 0", 20, WHITE)
+	hud.add_child(_wrap_chip("钱", chip_money))
+	chip_rep = _make_label("50 · 50 · 50", 14, WHITE)
+	hud.add_child(_wrap_chip("口碑", chip_rep))
+	chip_hours = _make_label("6 格", 20, RED)
+	hud.add_child(_wrap_chip("时辰", chip_hours))
+	await get_tree().process_frame
+	hud.position = Vector2(30, get_viewport().get_visible_rect().size.y - hud.size.y - 24)
+	gear.position = Vector2(get_viewport().get_visible_rect().size.x - gear.size.x - 30, 24)
+	_refresh_hud()
+
+	# 悬停提示
+	hover_box = PanelContainer.new()
+	hover_box.add_theme_stylebox_override("panel", _glass(0.66, 10))
+	hover_box.visible = false
+	layer.add_child(hover_box)
+	hover_label = _make_label("", 17, RED_SOFT)
+	hover_box.add_child(hover_label)
+
+	# 热点卡片
+	panel = PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _glass(0.72, 16))
+	panel.visible = false
+	panel.custom_minimum_size = Vector2(560, 0)
+	layer.add_child(panel)
+	var pv := VBoxContainer.new()
+	pv.add_theme_constant_override("separation", 14)
+	panel.add_child(pv)
+	panel_title = _make_label("", 26, RED_SOFT)
+	pv.add_child(panel_title)
+	var rule := HSeparator.new()
+	rule.modulate = Color(1, 1, 1, 0.18)
+	pv.add_child(rule)
+	panel_body = _make_label("", 19, WHITE)
+	panel_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	panel_body.custom_minimum_size = Vector2(520, 0)
+	panel_body.add_theme_color_override("font_color", Color(0.82, 0.81, 0.79))
+	pv.add_child(panel_body)
+	var hint := _make_label("左键进入 · Esc 关闭", 13, Color(0.72, 0.20, 0.14, 0.9))
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	pv.add_child(hint)
+
+	# 设置面板
+	settings_panel = _build_settings()
+	settings_panel.visible = false
+	layer.add_child(settings_panel)
+
+	# 工作台面板（接单 / 工序 / 结算 / 打烊）
+	travel_box = VBoxContainer.new()
+	travel_box.name = "Travel"
+	travel_box.anchor_left = 1.0
+	travel_box.anchor_top = 1.0
+	travel_box.anchor_right = 1.0
+	travel_box.offset_left = -178
+	travel_box.offset_right = -26
+	travel_box.offset_top = -300
+	travel_box.offset_bottom = -40
+	travel_box.add_theme_constant_override("separation", 8)
+	layer.add_child(travel_box)
+	for pair in [["去赌场", 1], ["去大学", 2], ["去 全能之门 · 旧书店", 3]]:
+		var tb := Button.new()
+		tb.text = str(pair[0])
+		tb.add_theme_font_size_override("font_size", 15)
+		tb.add_theme_color_override("font_color", Color(0.86, 0.84, 0.81, 0.95))
+		tb.add_theme_color_override("font_hover_color", Color(1, 1, 1, 1))
+		tb.add_theme_stylebox_override("normal", _glass(0.42, 10))
+		tb.add_theme_stylebox_override("hover", _glass(0.62, 10))
+		tb.add_theme_stylebox_override("pressed", _glass(0.72, 10))
+		var idx := int(pair[1])
+		tb.pressed.connect(func(): _sfx("res://audio/click.wav"); _goto_room(idx))
+		travel_box.add_child(tb)
+
+	work_panel = PanelContainer.new()
+	work_panel.add_theme_stylebox_override("panel", _glass(0.93, 18))
+	work_panel.custom_minimum_size = Vector2(700, 0)
+	work_panel.visible = false
+	layer.add_child(work_panel)
+	work_scroll = ScrollContainer.new()
+	work_scroll.custom_minimum_size = Vector2(680, 220)
+	work_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	work_panel.add_child(work_scroll)
+	work_box = VBoxContainer.new()
+	work_box.add_theme_constant_override("separation", 8)
+	work_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	work_scroll.add_child(work_box)
+
+	table_panel = PanelContainer.new()
+	table_panel.add_theme_stylebox_override("panel", _glass(0.94, 18))
+	table_panel.custom_minimum_size = Vector2(520, 0)
+	table_panel.visible = false
+	layer.add_child(table_panel)
+	table_box = VBoxContainer.new()
+	table_box.add_theme_constant_override("separation", 12)
+	table_panel.add_child(table_box)
+
+	ui_layer = layer
+	for c in ui_layer.get_children():
+		if c is CanvasItem:
+			c.visible = false
+
+
+func _on_planet_picked(i: int) -> void:
+	var def: Dictionary = TitleScene.DEFS[i]
+	_sfx("res://audio/click.wav")
+	if not def["playable"]:
+		if is_instance_valid(title):
+			title.hint_label.text = "%s 这条线还没开。" % def["name"]
+		return
+	_start_game()
+
+
+func _start_game() -> void:
+	if is_instance_valid(title):
+		title.hide_ui()
+	if is_instance_valid(room_node):
+		room_node.visible = true
+	if world_env != null:
+		world_env.background_color = Color(0.07, 0.07, 0.08)
+		world_env.ambient_light_energy = 0.8
+	started = true
+	_sfx("res://audio/click.wav")
+	_msg = "第 1 天。大厅还没上人，去服务台接单。"
+	if is_instance_valid(status_label):
+		status_label.visible = true
+	if is_instance_valid(ui_layer):
+		for c in ui_layer.get_children():
+			if c is CanvasItem:
+				c.visible = true
+	for n in [panel, settings_panel, work_panel, hover_box]:
+		if is_instance_valid(n):
+			n.visible = false
+	_goto_room(0)
+
+
+func _show_week_summary() -> void:
+	summary_panel = PanelContainer.new()
+	summary_panel.add_theme_stylebox_override("panel", _glass(0.92, 18))
+	summary_panel.custom_minimum_size = Vector2(440, 0)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	summary_panel.add_child(v)
+	var head := _make_label("01 · 七日结账", 22, RED_SOFT)
+	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(head)
+	var weekno := _make_label("第 %d 周" % (int((game.day - 1) / 7) + 1), 13, GREY)
+	weekno.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(weekno)
+	v.add_child(_rule())
+	for line in game.week_ledger():
+		var row := _make_label(str(line), 15, WHITE)
+		v.add_child(row)
+	v.add_child(_rule())
+	for name in game.rivals:
+		var rv: int = int(game.rivals[name])
+		var tone: Color = GREY if rv < 60 else RED_SOFT
+		v.add_child(_make_label("%s   %d" % [name, rv], 14, tone))
+	var btn := Button.new()
+	btn.text = "合上账本"
+	btn.add_theme_color_override("font_color", WHITE)
+	btn.add_theme_stylebox_override("normal", _glass(0.6, 8))
+	btn.pressed.connect(func():
+		if is_instance_valid(summary_panel):
+			summary_panel.queue_free()
+	)
+	v.add_child(btn)
+	ui_layer.add_child(summary_panel)
+	var vp := get_viewport().get_visible_rect().size
+	summary_panel.position = Vector2(vp.x * 0.5 - 220, vp.y * 0.5 - 170)
+
+
+func _add_draft_frame(layer: CanvasLayer) -> void:
+	## 底部一行微字。四角对准线试过，被 HUD 和标题压住，撤了。
+	var micro := _make_label("", 11, Color(0.86, 0.83, 0.78, 0.9))
+	micro.anchor_left = 0.0
+	micro.anchor_right = 1.0
+	micro.anchor_top = 1.0
+	micro.anchor_bottom = 1.0
+	micro.offset_top = -26
+	micro.offset_bottom = -8
+	micro.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	layer.add_child(micro)
+	micro_line = micro
+
+
+func _wrap_chip(name: String, value: Label) -> PanelContainer:
+	var c := PanelContainer.new()
+	c.add_theme_stylebox_override("panel", _glass(0.5, 12))
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 0)
+	c.add_child(v)
+	v.add_child(_make_label(name, 13, GREY))
+	v.add_child(value)
+	return c
+
+
+func _refresh_hud() -> void:
+	chip_day.text = "第 %d 天" % game.day
+	chip_money.text = "¥ %d" % game.money
+	chip_rep.text = "%d · %d · %d" % [game.rep_street, game.rep_trade, game.rep_official]
+	chip_hours.text = "%d 格" % game.hours
+	chip_hours.add_theme_color_override("font_color", RED if game.hours <= 2 else WHITE)
+	if is_instance_valid(micro_line):
+		micro_line.text = "MOONDUST CASE  ·  第 %d 天  ·  账 ¥%d  ·  官面 %d  ·  上供 %d" % [game.day, game.money, game.official_heat, game.tribute]
+
+
+func _build_settings() -> PanelContainer:
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", _glass(0.78, 16))
+	p.custom_minimum_size = Vector2(420, 0)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 16)
+	p.add_child(vb)
+	vb.add_child(_make_label("设置", 24, RED_SOFT))
+
+	var r1 := HBoxContainer.new()
+	r1.add_theme_constant_override("separation", 12)
+	vb.add_child(r1)
+	r1.add_child(_make_label("音量", 16, WHITE))
+	var vol := HSlider.new()
+	vol.min_value = 0.0
+	vol.max_value = 100.0
+	vol.value = 80.0
+	vol.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	r1.add_child(vol)
+
+	var r2 := HBoxContainer.new()
+	r2.add_theme_constant_override("separation", 12)
+	vb.add_child(r2)
+	r2.add_child(_make_label("鼠标速度", 16, WHITE))
+	var spd := HSlider.new()
+	spd.min_value = 0.2
+	spd.max_value = 3.0
+	spd.value = 1.0
+	spd.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	r2.add_child(spd)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	vb.add_child(row)
+	var quit := Button.new()
+	quit.text = "退出游戏"
+	quit.add_theme_font_size_override("font_size", 15)
+	quit.add_theme_color_override("font_color", WHITE)
+	quit.add_theme_stylebox_override("normal", _glass(0.5, 10))
+	quit.add_theme_stylebox_override("hover", _glass(0.7, 10))
+	quit.pressed.connect(func(): get_tree().quit())
+	row.add_child(quit)
+	var close := Button.new()
+	close.text = "关闭"
+	close.add_theme_font_size_override("font_size", 15)
+	close.add_theme_color_override("font_color", WHITE)
+	close.add_theme_stylebox_override("normal", _glass(0.5, 10))
+	close.add_theme_stylebox_override("hover", _glass(0.7, 10))
+	close.pressed.connect(_close_settings)
+	row.add_child(close)
+	return p
+
+
+func _wipe(n: Node) -> void:
+	for c in n.get_children():
+		n.remove_child(c)
+		c.free()
+
+
+func _rule() -> HSeparator:
+	var r := HSeparator.new()
+	r.modulate = Color(1, 1, 1, 0.16)
+	return r
+
+
+
+func _open_table() -> void:
+	table_open = true
+	table_panel.visible = true
+	var vp := get_viewport().get_visible_rect().size
+	table_panel.position = Vector2(vp.x * 0.5 - 260, vp.y * 0.5 - 190)
+	_render_table()
+
+
+func _close_table() -> void:
+	table_open = false
+	table_panel.visible = false
+
+
+func _render_table() -> void:
+	table_box.get_children().map(func(c): c.queue_free())
+	var head := _make_label("赌桌", 26, WHITE)
+	table_box.add_child(head)
+	var sub := _make_label("押大小 · 三同通杀 · 一注 ¥100", 14, GREY)
+	table_box.add_child(sub)
+	table_box.add_child(_rule())
+	var info := _make_label("钱 ¥%d   口碑 %d·%d·%d   时辰 %d 格" % [
+		game.money, game.rep_street, game.rep_trade, game.rep_official, game.hours], 15, WHITE)
+	table_box.add_child(info)
+	if game.last_dice.size() == 3:
+		var d: Array = game.last_dice
+		table_box.add_child(_make_label("上一把：%d %d %d（%d 点）" % [d[0], d[1], d[2], d[0] + d[1] + d[2]], 15, GREY))
+	if game.log.size() > 0:
+		table_box.add_child(_make_label(str(game.log[game.log.size() - 1]), 14, RED_SOFT))
+	table_box.add_child(_rule())
+	table_box.add_child(_wbtn("押 大   ¥100", func(): _bet("big", "straight")))
+	table_box.add_child(_wbtn("押 小   ¥100", func(): _bet("small", "straight")))
+	table_box.add_child(_wbtn("当托放水   ¥100", func(): _bet("big", "water")))
+	table_box.add_child(_wbtn("离桌", _close_table))
+
+
+func _bet(pick: String, style: String) -> void:
+	var r: Dictionary = game.casino_bet(100, pick, style)
+	_msg = str(r["text"])
+	_sfx("res://audio/coin.wav") if bool(r["ok"]) else _sfx("res://audio/click.wav")
+	_render_table()
+	_refresh_hud()
+
+
+func _wbtn(text: String, cb: Callable) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.add_theme_font_size_override("font_size", 16)
+	b.add_theme_color_override("font_color", WHITE)
+	b.add_theme_color_override("font_hover_color", RED_SOFT)
+	b.add_theme_color_override("font_disabled_color", Color(0.5, 0.5, 0.5, 0.55))
+	b.add_theme_stylebox_override("normal", _glass(0.5, 10))
+	b.add_theme_stylebox_override("hover", _glass(0.72, 10))
+	b.add_theme_stylebox_override("pressed", _glass(0.85, 10))
+	b.add_theme_stylebox_override("disabled", _glass(0.22, 10))
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.pressed.connect(func():
+		_sfx("res://audio/click.wav")
+		cb.call())
+	return b
+
+
+func _open_work() -> void:
+	work_open = true
+	work_panel.visible = true
+	var vp := get_viewport().get_visible_rect().size
+	work_panel.position = Vector2(vp.x * 0.5 - 350, 96)
+	_render_work()
+
+
+func _close_work() -> void:
+	work_open = false
+	work_panel.visible = false
+
+
+func _render_work() -> void:
+	_wipe(work_box)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 12)
+	work_box.add_child(head)
+	head.add_child(_make_label("工作台", 22, RED_SOFT))
+	var sp := Control.new()
+	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(sp)
+	head.add_child(_make_label("第 %d 天 · 剩 %d 格" % [game.day, game.hours], 15, RED if game.hours <= 2 else GREY))
+	var closer := Button.new()
+	closer.text = "关上"
+	closer.add_theme_font_size_override("font_size", 14)
+	closer.add_theme_color_override("font_color", GREY)
+	closer.add_theme_color_override("font_hover_color", WHITE)
+	closer.add_theme_stylebox_override("normal", _glass(0.4, 10))
+	closer.add_theme_stylebox_override("hover", _glass(0.6, 10))
+	closer.pressed.connect(_close_work)
+	head.add_child(closer)
+	work_box.add_child(_rule())
+	var res := HBoxContainer.new()
+	res.add_theme_constant_override("separation", 16)
+	work_box.add_child(res)
+	res.add_child(_make_label("钱 ¥%d" % game.money, 16, WHITE))
+	res.add_child(_make_label("街坊 %d" % game.rep_street, 14, WHITE))
+	res.add_child(_make_label("同业 %d" % game.rep_trade, 14, WHITE))
+	res.add_child(_make_label("官方 %d" % game.rep_official, 14, WHITE))
+	res.add_child(_make_label("上供 %d" % game.tribute, 14, RED_SOFT))
+	work_box.add_child(_rule())
+	if game.active.is_empty():
+		_render_case_list()
+	else:
+		_render_case_work()
+	work_box.add_child(_rule())
+	for i in range(max(0, game.log.size() - 5), game.log.size()):
+		work_box.add_child(_make_label("· " + str(game.log[i]), 14, GREY))
+	_fit_work_panel.call_deferred()
+
+
+func _fit_work_panel() -> void:
+	var h: float = work_box.get_combined_minimum_size().y + 28.0
+	work_scroll.custom_minimum_size = Vector2(680, clampf(h, 200.0, 700.0))
+
+
+func _render_case_list() -> void:
+	work_box.add_child(_make_label("今天送来的", 17, WHITE))
+	for idx in game.today_cases():
+		var c: Dictionary = game.draw_case(idx)
+		var tag := "（替神收账）" if bool(c.get("special", false)) else ""
+		var b := _wbtn("「%s」· %s · %s%s" % [c["name"], c["age"], c["cause"], tag], _take_case.bind(idx))
+		work_box.add_child(b)
+	if game.casino_ready():
+		var bc := _wbtn("未型来了：去赌场谈谈（收尾）", _do_casino)
+		bc.add_theme_color_override("font_color", RED_SOFT)
+		work_box.add_child(bc)
+	work_box.add_child(_wbtn("打烊，收工", _do_end_day))
+
+
+func _render_case_work() -> void:
+	var c: Dictionary = game.active
+	var risk: Dictionary = game.RISK[c["cause"]]
+	work_box.add_child(_make_label("「%s」· %s · %s（%s）" % [c["name"], c["age"], c["cause"], risk["name"]], 20, RED_SOFT))
+	work_box.add_child(_make_label("家属：%s" % c["family"], 15, WHITE))
+	work_box.add_child(_make_label("遗愿：%s" % c["wish"], 15, WHITE))
+	work_box.add_child(_make_label("怨由：%s" % c["grudge"], 14, GREY))
+	work_box.add_child(_make_label("身家：¥%d" % int(c["worth"]), 14, WHITE))
+	var gv: int = int(c["grudge_now"])
+	work_box.add_child(_make_label("怨气：%d / 100" % gv, 15, RED if gv >= 70 else WHITE))
+	work_box.add_child(_rule())
+	work_box.add_child(_make_label("第 %d 道 · %s" % [game.active_stage + 1, game.stage_name()], 18, RED_SOFT))
+	var opts: Array = game.choices_for(game.active_stage, c)
+	for i in opts.size():
+		var o: Dictionary = opts[i]
+		var cost: int = int(o.get("cost", 0))
+		var txt: String = str(o.get("label", ""))
+		if cost > 0:
+			txt += "（时辰 %d）" % cost
+		else:
+			txt += "（不花时辰）"
+		var b := _wbtn(txt, _do_choose.bind(i))
+		if not game.can_afford(o) or not game.can_choose(o):
+			b.disabled = true
+		work_box.add_child(b)
+
+
+func _take_case(idx: int) -> void:
+	if game.start_case(idx):
+		_msg = ""
+	else:
+		_msg = "时辰不够了，先打烊吧。"
+	_render_work()
+	_refresh_hud()
+
+
+func _do_choose(i: int) -> void:
+	var r: Dictionary = game.choose(i)
+	_msg = str(r["text"])
+	if bool(r["done"]):
+		if r.has("haunt"):
+			_msg += "（尸身闹了。）"
+			_sfx("res://audio/haunt.wav")
+		else:
+			_sfx("res://audio/coin.wav")
+	_render_work()
+	_refresh_hud()
+
+
+func _do_end_day() -> void:
+	if not game.active.is_empty():
+		_msg = "手上这单还没办完，先办完再打烊。"
+		_render_work()
+		return
+	var s: Dictionary = game.end_day()
+	var bits: Array = ["第 %d 天打烊。" % int(s["day"])]
+	if s.has("decay") and not Dictionary(s["decay"]).is_empty():
+		bits.append("人情淡了一点。")
+	var pr: Dictionary = s.get("press", {})
+	if not pr.is_empty() and int(pr.get("squeeze", 0)) == 1:
+		bits.append("同业有人议价。")
+	if not pr.is_empty() and str(pr.get("laggard", "")) != "":
+		bits.append("%s 在追。" % str(pr.get("laggard", "")))
+	bits.append(str(s.get("heat_text", "")))
+	_msg = " ".join(bits)
+	if bool(s["week_end"]):
+		_show_week_summary()
+	_render_work()
+	_refresh_hud()
+
+
+func _do_casino() -> void:
+	var r: Dictionary = game.accept_deal()
+	_msg = str(r["text"])
+	if cur_room != 1:
+		_enter_casino()
+	_render_work()
+	_refresh_hud()
+
+
+func _enter_casino() -> void:
+	_goto_room(1)
+	_spawn_casino_lights()
+
+
+func _goto_room(i: int) -> void:
+	cur_room = i
+	var titles := ["完人之门 · 殡仪馆", "赌场", "大学 · 阶梯教室", "全能之门 · 旧书店"]
+	if is_instance_valid(room_title):
+		room_title.text = titles[clampi(i, 0, titles.size() - 1)]
+	if is_instance_valid(travel_box):
+		travel_box.visible = (i == 0)
+	if is_instance_valid(status_label):
+		var hints := [
+			"第 %d 天。大厅还没上人，去服务台接单。" % game.day,
+			"赌场。押大押小，三同通杀。",
+			"阶梯教室。讲课的比听课的多。",
+			"旧书店。架上的书比人重。",
+		]
+		var hint: String = hints[clampi(i, 0, hints.size() - 1)]
+		if i == 1 and game.casino_ready():
+			var un := [
+				"一个客人一直没走，他说他等的人已经到门口了。",
+				"那个客人问：你们这儿收不收没有名字的。",
+				"客人把筹码全推过来，说：这一注押我自己。",
+			]
+			hint = un[game.tribute % un.size()]
+		status_label.text = hint
+	if is_instance_valid(panel):
+		panel.visible = false
+	if is_instance_valid(hover_box):
+		hover_box.visible = false
+	for pnl in [table_panel, work_panel, summary_panel, settings_panel]:
+		if is_instance_valid(pnl):
+			pnl.visible = false
+	room_node.visible = (i == 0)
+	casino_node.visible = (i == 1)
+	university_node.visible = (i == 2)
+	bookshop_node.visible = (i == 3)
+	match i:
+		0:
+			cam.position = Vector3(1.2, 1.68, 7.4)
+			yaw = 0.0
+			pitch = -0.03
+		1:
+			cam.position = Vector3(2.8, 1.7, 7.0)
+			yaw = 0.39
+			pitch = -0.05
+		2:
+			cam.position = Vector3(0.0, 1.7, 5.6)
+			yaw = 0.0
+			pitch = -0.03
+		3:
+			cam.position = Vector3(0.0, 1.6, 5.2)
+			yaw = 0.0
+			pitch = -0.03
+	_apply_look()
+	if i != 0:
+		if back_btn == null:
+			back_btn = _make_label("\u27f5 \u56de\u5230\u5927\u5385", 16, Color(0.72, 0.20, 0.14, 0.95))
+			back_btn.mouse_filter = Control.MOUSE_FILTER_STOP
+			back_btn.gui_input.connect(_on_back_clicked)
+			ui_layer.add_child(back_btn)
+			back_btn.position = Vector2(26, 58)
+		back_btn.visible = true
+	else:
+		if back_btn != null:
+			back_btn.visible = false
+
+
+func _on_back_clicked(ev: InputEvent) -> void:
+	if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+		_sfx("res://audio/click.wav")
+		_goto_room(0)
+
+
+func _spawn_casino_lights() -> void:
+	for spec in [
+		{"p": Vector3(0, 4.6, 0), "e": 9.0, "r": 16.0},
+		{"p": Vector3(-5.0, 4.4, -3.0), "e": 6.5, "r": 12.0},
+		{"p": Vector3(5.0, 4.4, -3.0), "e": 6.5, "r": 12.0},
+		{"p": Vector3(0, 4.4, 3.5), "e": 5.0, "r": 11.0},
+	]:
+		var l := OmniLight3D.new()
+		l.position = spec["p"]
+		l.light_energy = spec["e"]
+		l.omni_range = spec["r"]
+		l.light_color = Color(1.0, 0.88, 0.68)
+		add_child(l)
+		casino_lights.append(l)
+
+
+func _apply_look() -> void:
+	if cam:
+		cam.rotation = Vector3(clamp(pitch, -1.2, 1.2), yaw, 0)
+
+
+func _process(delta: float) -> void:
+	if not started:
+		if is_instance_valid(title):
+			title.tick(delta)
+		return
+	var dir := Vector3.ZERO
+	if Input.is_action_pressed("move_forward"):
+		dir -= cam.global_transform.basis.z
+	if Input.is_action_pressed("move_back"):
+		dir += cam.global_transform.basis.z
+	if Input.is_action_pressed("move_left"):
+		dir -= cam.global_transform.basis.x
+	if Input.is_action_pressed("move_right"):
+		dir += cam.global_transform.basis.x
+	dir.y = 0
+	if dir.length() > 0.01:
+		cam.position += dir.normalized() * 3.4 * delta
+		if cur_room == 1:
+			cam.position.x = clamp(cam.position.x, -9.5, 9.5)
+			cam.position.z = clamp(cam.position.z, -7.5, 7.5)
+		elif cur_room == 2:
+			cam.position.x = clamp(cam.position.x, -8.0, 8.0)
+			cam.position.z = clamp(cam.position.z, -5.5, 5.5)
+		elif cur_room == 3:
+			cam.position.x = clamp(cam.position.x, -6.5, 6.5)
+			cam.position.z = clamp(cam.position.z, -5.0, 5.0)
+		else:
+			cam.position.x = clamp(cam.position.x, -12.0, 12.0)
+			cam.position.z = clamp(cam.position.z, -9.2, 9.2)
+		cam.position.y = 1.92
+
+	_update_hover()
+
+
+func _update_hover() -> void:
+	if cur_room != 0 and cur_room != 1:
+		current = -1
+		hover_label.text = ""
+		return
+	var spots := _spots()
+	var mouse := get_viewport().get_mouse_position()
+	var best := -1
+	var best_d := 90.0
+	for i in spots.size():
+		var p: Vector3 = spots[i]["pos"]
+		if cam.is_position_behind(p):
+			continue
+		var sp := cam.unproject_position(p)
+		var d := sp.distance_to(mouse)
+		if d < best_d:
+			best_d = d
+			best = i
+	current = best
+	if best >= 0:
+		var sp2 := cam.unproject_position(spots[best]["pos"])
+		hover_label.text = spots[best]["name"]
+		hover_box.position = sp2 + Vector2(16, -hover_box.size.y - 10)
+		hover_box.visible = true
+	else:
+		hover_box.visible = false
+
+
+func _input(event: InputEvent) -> void:
+	if not started:
+		if is_instance_valid(title) and title.handle_input(event):
+			return
+		return
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_RIGHT:
+			dragging = event.pressed
+		elif event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+			if settings_open:
+				return
+			if work_open:
+				return
+			if table_open:
+				return
+			if current >= 0:
+				_open_panel(current)
+			elif panel_open:
+				_close_panel()
+	elif event is InputEventMouseMotion and dragging:
+		yaw -= event.relative.x * 0.0032
+		pitch -= event.relative.y * 0.0028
+		_apply_look()
+	elif event is InputEventKey and event.pressed:
+		if event.keycode == KEY_ESCAPE:
+			if settings_open:
+				_close_settings()
+			elif table_open:
+				_close_table()
+			elif work_open:
+				_close_work()
+			elif panel_open:
+				_close_panel()
+		elif event.keycode == KEY_1:
+			_goto_room(0)
+		elif event.keycode == KEY_2:
+			_goto_room(1)
+		elif event.keycode == KEY_3:
+			_goto_room(2)
+		elif event.keycode == KEY_4:
+			_goto_room(3)
+
+
+func _open_panel(idx: int) -> void:
+	var h: Dictionary = _spots()[idx]
+	if h["name"] in ["服务台", "停尸间"]:
+		_open_work()
+		return
+	if h["kind"] == "table":
+		_open_table()
+		return
+	if str(h["kind"]).begins_with("uni_"):
+		var r: Dictionary = game.uni_lesson() if h["kind"] == "uni_lesson" else (
+			game.uni_archive() if h["kind"] == "uni_archive" else game.uni_hire())
+		panel_title.text = str(h["name"])
+		panel_body.text = str(r.get("text", ""))
+		panel.visible = true
+		panel_open = true
+		var vp2 := get_viewport().get_visible_rect().size
+		panel.position = Vector2(vp2.x * 0.5 - 280, vp2.y - 300)
+		_refresh_hud()
+		return
+	panel_title.text = h["name"]
+	panel_body.text = h["desc"]
+	panel.visible = true
+	panel_open = true
+	var vp := get_viewport().get_visible_rect().size
+	panel.position = Vector2(vp.x * 0.5 - 280, vp.y - 300)
+
+
+func _close_panel() -> void:
+	panel.visible = false
+	panel_open = false
+
+
+func _open_settings() -> void:
+	settings_panel.visible = true
+	settings_open = true
+	var vp := get_viewport().get_visible_rect().size
+	settings_panel.position = Vector2(vp.x * 0.5 - 210, vp.y * 0.5 - 160)
+
+
+func _close_settings() -> void:
+	settings_panel.visible = false
+	settings_open = false
+
+
+func _capture() -> void:
+	for i in 12:
+		await get_tree().process_frame
+	if "--shot2" in OS.get_cmdline_user_args():
+		_open_panel(2)
+		for i in 4:
+			await get_tree().process_frame
+	elif "--shot3" in OS.get_cmdline_user_args():
+		_on_planet_picked(0)
+		_open_settings()
+		for i in 4:
+			await get_tree().process_frame
+	elif "--shot4" in OS.get_cmdline_user_args():
+		_on_planet_picked(0)
+		_open_work()
+		for i in 4:
+			await get_tree().process_frame
+	elif "--shot5" in OS.get_cmdline_user_args():
+		_on_planet_picked(0)
+		_open_work()
+		_take_case(0)
+		for i in 4:
+			await get_tree().process_frame
+	elif "--shot6" in OS.get_cmdline_user_args():
+		_on_planet_picked(0)
+		game.week = [
+			{"day": 1, "earned": 1800, "cases": 1},
+			{"day": 2, "earned": 2400, "cases": 2},
+			{"day": 4, "earned": 1900, "cases": 3},
+			{"day": 4, "earned": 1200, "cases": 4},
+			{"day": 5, "earned": 900, "cases": 5},
+			{"day": 7, "earned": 2600, "cases": 6},
+		]
+		game.official_heat = 40
+		game.rivals = {"全能之门": 62, "壹祖": 41, "势宗": 55, "未知信仰": 48}
+		game.day = 8
+		_show_week_summary()
+		for i in 4:
+			await get_tree().process_frame
+	elif "--shot7" in OS.get_cmdline_user_args():
+		_start_game()
+		_enter_casino()
+		for i in 4:
+			await get_tree().process_frame
+	elif "--shot8" in OS.get_cmdline_user_args():
+		_on_planet_picked(0)
+		for i in 4:
+			await get_tree().process_frame
+	elif "--shot10" in OS.get_cmdline_user_args():
+		_start_game()
+		_goto_room(2)
+		for i in 4:
+			await get_tree().process_frame
+	elif "--shot11" in OS.get_cmdline_user_args():
+		_start_game()
+		_goto_room(3)
+		for i in 4:
+			await get_tree().process_frame
+	elif "--shot12" in OS.get_cmdline_user_args():
+		_start_game()
+		game.money = 800
+		_goto_room(1)
+		_open_table()
+		for i in 4:
+			await get_tree().process_frame
+	elif "--shot13" in OS.get_cmdline_user_args():
+		_start_game()
+		game.money = 800
+		_goto_room(1)
+		_open_table()
+		_bet("big", "water")
+		_refresh_hud()
+		for i in 4:
+			await get_tree().process_frame
+	elif "--shot14" in OS.get_cmdline_user_args():
+		_on_planet_picked(0)
+		game.tribute = 3
+		_open_work()
+		for i in 4:
+			await get_tree().process_frame
+	elif "--shot16" in OS.get_cmdline_user_args():
+		_start_game()
+		_goto_room(3)
+		if is_instance_valid(status_label):
+			status_label.visible = false
+			print("DBG panel ", panel.visible, " ", panel.get_global_rect())
+			print("DBG work ", work_panel.visible, " ", work_panel.get_global_rect())
+			print("DBG table ", table_panel.visible, " ", table_panel.get_global_rect())
+			status_label.visible = false
+		for i in 4:
+			await get_tree().process_frame
+	elif "--shot17" in OS.get_cmdline_user_args():
+		_start_game()
+		_goto_room(2)
+		for i in 4:
+			await get_tree().process_frame
+		_open_panel(0)
+		for i in 4:
+			await get_tree().process_frame
+	elif "--shot15" in OS.get_cmdline_user_args():
+		_on_planet_picked(0)
+		game.rep_street = 80
+		game.week = [{"day": 1, "earned": 120, "cases": 2}]
+		_do_end_day()
+		for i in 4:
+			await get_tree().process_frame
+	elif "--shot9" in OS.get_cmdline_user_args():
+		if is_instance_valid(title):
+			title.universe.rotation.y = 0.0
+		for i in 4:
+			await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	var img := get_viewport().get_texture().get_image()
+	img.save_png("res://shot.png")
+	print("SHOT saved")
+	get_tree().quit()
