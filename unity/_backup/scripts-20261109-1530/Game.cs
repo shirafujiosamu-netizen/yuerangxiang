@@ -1,0 +1,866 @@
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace Yueliangxiang
+{
+    /// <summary>
+    /// 月壤箱 · Unity 第一版骨架。
+    /// 具体场景走 2D（一张背景图 + 一排可点的地方），3D 只留给大地图。
+    /// 打开工程按 Play 就能跑，不需要在场景里摆东西。
+    /// </summary>
+    public class Game : MonoBehaviour
+    {
+        static Game _instance;
+        static bool _armed;
+        public static bool LoadSaveOnStart;
+        public static int SlotToLoad;
+
+        /// <summary>开始界面选完世界后才放行。</summary>
+        public static void Arm() { _armed = true; Boot(); }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        static void Boot()
+        {
+            if (!_armed || _instance != null) return;
+            var go = new GameObject("[月壤箱]");
+            Object.DontDestroyOnLoad(go);
+            _instance = go.AddComponent<Game>();
+        }
+
+        struct Hotspot
+        {
+            public string name, kind, desc;
+            public Vector3 pos;          // 3D 场景里用
+        }
+
+        class RoomDef
+        {
+            public string key, title;
+            public string bg;            // Resources 里的 2D 背景；空则走 3D
+            public Hotspot[] spots;
+        }
+
+        static readonly Hotspot[] LobbySpots =
+        {
+            new Hotspot { name = "服务台", kind = "counter", pos = new Vector3(-7.6f, 1.55f, -4.4f), desc = "办手续、问价钱、看今天有几单。" },
+            new Hotspot { name = "停尸间", kind = "door", pos = new Vector3(-8.4f, 1.9f, -9.82f), desc = "里头的灯常年亮着，冷气从门缝往外渗。" },
+            new Hotspot { name = "葬礼会堂", kind = "door", pos = new Vector3(0f, 1.9f, -9.82f), desc = "在办一场，念辞的人声音很稳。" },
+            new Hotspot { name = "焚化炉", kind = "door", pos = new Vector3(8.4f, 1.9f, -9.82f), desc = "排到明天下午，师傅说要先冷一冷。" },
+            new Hotspot { name = "墓园", kind = "exit", pos = new Vector3(-12.82f, 1.9f, 3.0f), desc = "往左出去。石碑一排一排，草刚剪过。" },
+            new Hotspot { name = "丧葬用品店", kind = "shop", pos = new Vector3(12.82f, 1.9f, 4.4f), desc = "寿衣、骨灰盒、香烛，明码标价。" },
+            new Hotspot { name = "卫生间", kind = "door", pos = new Vector3(12.82f, 1.9f, -0.4f), desc = "洗手台的水一直没关紧。" },
+            new Hotspot { name = "餐厅", kind = "door", pos = new Vector3(12.82f, 1.9f, -5.0f), desc = "两荤一素十五块，家属多半吃不下。" },
+            new Hotspot { name = "业务公示", kind = "board", pos = new Vector3(-12.8f, 2.55f, -6.6f), desc = "价目、流程、投诉电话，纸角都卷了。" },
+        };
+
+        static readonly Hotspot[] UniversitySpots =
+        {
+            new Hotspot { name = "阶梯教室", kind = "uni_lesson", pos = new Vector3(-4.4f, 1.25f, -2.2f), desc = "门开着，里面正在讲丧礼。" },
+            new Hotspot { name = "旧档室", kind = "uni_archive", pos = new Vector3(0.2f, 1.30f, -4.6f), desc = "一屋子卷宗，落灰落得比人高。" },
+            new Hotspot { name = "走廊", kind = "uni_hire", pos = new Vector3(4.6f, 1.25f, -2.4f), desc = "几个学生在抽烟，找活干。" },
+        };
+
+        static readonly Hotspot[] BookshopSpots =
+        {
+            new Hotspot { name = "书架", kind = "book_read", desc = "一排旧账册，抄几页就知道别人怎么干。" },
+            new Hotspot { name = "柜台", kind = "book_buy", desc = "《丧仪备要》一百二一本，纸是新的。" },
+            new Hotspot { name = "后间", kind = "book_back", desc = "堆着没人领的骨灰盒，标签都糊了。" },
+        };
+
+        static readonly Hotspot[] CasinoSpots =
+        {
+            new Hotspot { name = "赌桌", kind = "table", pos = new Vector3(0f, 1.05f, -1.2f), desc = "押大押小，三同通杀。" },
+            new Hotspot { name = "吧台", kind = "bar", pos = new Vector3(9f, 1.3f, -1.0f), desc = "酒是假的，冰块是真的。" },
+            new Hotspot { name = "老虎机", kind = "slot", pos = new Vector3(-9f, 1.3f, -1.0f), desc = "三个铃铛，二十年没中过。" },
+        };
+
+        static readonly RoomDef[] Rooms =
+        {
+            new RoomDef { key = "lobby",      title = "殡仪馆", bg = "Scenes/lobby_a", spots = LobbySpots },
+            new RoomDef { key = "bookshop",   title = "书店",   bg = "Scenes/lobby_a", spots = BookshopSpots },
+            new RoomDef { key = "casino",     title = "赌场",   bg = "Scenes/lobby_a", spots = CasinoSpots },
+            new RoomDef { key = "university", title = "大学",   bg = "Scenes/lobby_a", spots = UniversitySpots },
+        };
+
+        int roomIndex;
+        GameObject roomInstance;
+        Texture2D bgTex;
+        string modelStatus = "";
+        readonly List<GameObject> markers = new List<GameObject>();
+
+        float _bannerUntil;
+        string _bannerText = "";
+
+        void Banner(string text, float seconds = 2.2f)
+        {
+            _bannerText = text;
+            _bannerUntil = Time.time + seconds;
+        }
+
+        Hotspot? hovered;
+        Hotspot? opened;
+        int hoveredChip = -1;
+
+        static bool _uiTested;
+        float _t0;
+        public GameState st = new GameState();
+        string panel = "";
+        string panelBody = "";
+
+        Vector3 pivot = new Vector3(0f, 1.6f, 0f);
+        float yaw, pitch = 12f, distance = 14f;
+        Vector3 lastMouse;
+
+        Camera cam;
+
+        void Awake()
+        {
+            MenuScreen.Ambient();
+            Application.targetFrameRate = 60;
+            _t0 = Time.time;
+            EnsureCamera();
+            EnsureLight();
+            if (LoadSaveOnStart) { LoadSaveOnStart = false; st.CurrentSlot = SlotToLoad; st.Load(); }
+            LoadRoom(0);
+            Banner($"第 {st.day} 天 · {Rooms[0].title}");
+        }
+
+        void EnsureCamera()
+        {
+            cam = Camera.main;
+            if (cam == null)
+            {
+                var go = new GameObject("Main Camera");
+                go.tag = "MainCamera";
+                cam = go.AddComponent<Camera>();
+                go.AddComponent<AudioListener>();
+            }
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = new Color(0.94f, 0.93f, 0.91f);
+            cam.fieldOfView = 55f;
+            ApplyLook();
+        }
+
+        void EnsureLight()
+        {
+            if (FindObjectOfType<Light>() != null) return;
+            var go = new GameObject("Key Light");
+            var l = go.AddComponent<Light>();
+            l.type = LightType.Directional;
+            l.intensity = 1.05f;
+            l.color = new Color(1f, 0.97f, 0.92f);
+            go.transform.rotation = Quaternion.Euler(48f, -32f, 0f);
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+            RenderSettings.ambientLight = new Color(0.55f, 0.55f, 0.58f);
+        }
+
+        void LoadRoom(int index)
+        {
+            roomIndex = Mathf.Clamp(index, 0, Rooms.Length - 1);
+            if (roomInstance != null) Destroy(roomInstance);
+            foreach (var m in markers) if (m != null) Destroy(m);
+            markers.Clear();
+            hovered = null;
+            opened = null;
+            hoveredChip = -1;
+            modelStatus = "";
+
+            var def = Rooms[roomIndex];
+            Banner(def.title, 1.4f);
+
+            // 2D 场景：只读一张背景图
+            if (!string.IsNullOrEmpty(def.bg))
+            {
+                bgTex = Resources.Load<Texture2D>(def.bg);
+                Debug.Log($"[月壤箱] {def.key} 2D 背景 {def.bg} → {(bgTex != null ? bgTex.width + "x" + bgTex.height : "null")}");
+                if (bgTex == null) modelStatus = "找不到背景图 " + def.bg;
+                return;
+            }
+
+            // 3D 场景（留给大地图）
+            bgTex = null;
+            var prefab = Resources.Load<GameObject>("Models/" + def.key);
+            if (prefab == null)
+            {
+                modelStatus = "找不到模型 Models/" + def.key + ".glb";
+                return;
+            }
+            roomInstance = Instantiate(prefab);
+            roomInstance.name = def.key;
+            FrameRoom(roomInstance);
+
+            foreach (var spot in def.spots)
+            {
+                var marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                marker.name = "hotspot:" + spot.name;
+                marker.transform.localScale = Vector3.one * 0.28f;
+                marker.transform.position = spot.pos;
+                marker.GetComponent<Collider>().isTrigger = true;
+                marker.GetComponent<MeshRenderer>().material.color = new Color(0.72f, 0.20f, 0.14f);
+                marker.AddComponent<HotspotTag>().spot = spot;
+                markers.Add(marker);
+            }
+        }
+
+        void FrameRoom(GameObject room)
+        {
+            var renderers = room.GetComponentsInChildren<Renderer>();
+            if (renderers.Length == 0) { pivot = room.transform.position + Vector3.up * 1.6f; distance = 14f; return; }
+            var bounds = renderers[0].bounds;
+            foreach (var r in renderers) bounds.Encapsulate(r.bounds);
+            pivot = bounds.center;
+            distance = Mathf.Clamp(Mathf.Min(bounds.size.x, bounds.size.z) * 0.42f, 4f, 16f);
+            pitch = 6f;
+            Debug.Log($"[月壤箱] 房间 {room.name} 包围盒 {bounds.size} 中心 {bounds.center} 相机距离 {distance:0.0}");
+        }
+
+        void Update()
+        {
+            for (int i = 0; i < Rooms.Length; i++)
+                if (Input.GetKeyDown(KeyCode.Alpha1 + i) && i != roomIndex) LoadRoom(i);
+
+            if (Input.GetKeyDown(KeyCode.Escape)) { opened = null; if (panel != "") { panel = ""; } }
+            if (Input.GetKeyDown(KeyCode.C)) panel = "counter";
+            if (Input.GetKeyDown(KeyCode.R)) panel = "ledger";
+            if (Input.GetKeyDown(KeyCode.T)) { panelBody = st.EndDay(); panel = "result"; MenuScreen.Play("haunt", 0.35f); }
+
+            RunUiTest();
+
+            if (bgTex != null) return; // 2D 场景不动相机
+
+            if (Input.GetMouseButtonDown(0) || Input.GetMouseButtonDown(1)) lastMouse = Input.mousePosition;
+            if (Input.GetMouseButton(1))
+            {
+                var d = Input.mousePosition - lastMouse;
+                yaw += d.x * 0.25f;
+                pitch = Mathf.Clamp(pitch - d.y * 0.2f, -10f, 75f);
+                lastMouse = Input.mousePosition;
+            }
+            if (Input.GetMouseButton(2))
+            {
+                var d = Input.mousePosition - lastMouse;
+                pivot += new Vector3(-d.x, 0f, -d.y) * (distance * 0.0012f);
+                lastMouse = Input.mousePosition;
+            }
+            distance = Mathf.Clamp(distance - Input.mouseScrollDelta.y * 1.2f, 4f, 40f);
+            ApplyLook();
+
+            hovered = null;
+            if (cam != null)
+            {
+                var ray = cam.ScreenPointToRay(Input.mousePosition);
+                if (Physics.Raycast(ray, out var hit, 200f))
+                {
+                    var tag = hit.collider.GetComponent<HotspotTag>();
+                    if (tag != null) hovered = tag.spot;
+                }
+            }
+            if (hovered.HasValue && Input.GetMouseButtonDown(0)) opened = hovered;
+        }
+
+        void ApplyLook()
+        {
+            if (cam == null) return;
+            var rot = Quaternion.Euler(pitch, yaw, 0f);
+            cam.transform.position = pivot + rot * new Vector3(0f, 0f, -distance);
+            cam.transform.LookAt(pivot + Vector3.up * 0.6f);
+        }
+
+        // ── 界面 ──────────────────────────────────────────────────────────────
+        Rect[] chipRects = new Rect[0];
+        Rect[] roomRects = new Rect[0];
+
+        /// <summary>左上四个场景标签，鼠标点就换。</summary>
+        void DrawRoomTabs()
+        {
+            var st = new GUIStyle(GUI.skin.label) { fontSize = 14, alignment = TextAnchor.MiddleCenter };
+            if (roomRects.Length != Rooms.Length) roomRects = new Rect[Rooms.Length];
+
+            var mouse = Event.current.mousePosition;
+            float x = 16f, y = 16f, h = 32f;
+
+            for (int i = 0; i < Rooms.Length; i++)
+            {
+                float w = st.CalcSize(new GUIContent(Rooms[i].title)).x + 44f;
+                var r = new Rect(x, y, w, h);
+                roomRects[i] = r;
+                x += w + 6f;
+
+                bool current = i == roomIndex;
+                bool hot = r.Contains(mouse);
+
+                GUI.color = current
+                    ? new Color(0.11f, 0.19f, 0.17f, 0.95f)
+                    : hot ? new Color(0.99f, 0.98f, 0.95f, 0.98f) : new Color(0.99f, 0.98f, 0.95f, 0.78f);
+                GUI.Box(r, GUIContent.none);
+                GUI.color = current ? new Color(0.96f, 0.93f, 0.86f) : new Color(0.11f, 0.19f, 0.17f);
+                GUI.Label(r, Rooms[i].title, st);
+                GUI.color = Color.white;
+
+                if (hot && !current && Event.current.type == EventType.MouseDown && Event.current.button == 0)
+                {
+                    LoadRoom(i);
+                    Event.current.Use();
+                }
+            }
+
+            GUI.Label(new Rect(16f, 54f, 460f, 24f), "点标签换场景　点下方地名看细节",
+                new GUIStyle(GUI.skin.label) { fontSize = 12 });
+        }
+
+        void DrawBackground(Texture2D tex)
+        {
+            float rt = (float)tex.width / tex.height;
+            float st = (float)Screen.width / Screen.height;
+            Rect r;
+            if (rt > st)
+            {
+                float w = Screen.height * rt;
+                r = new Rect((Screen.width - w) * 0.5f, 0, w, Screen.height);
+            }
+            else
+            {
+                float h = Screen.width / rt;
+                r = new Rect(0, (Screen.height - h) * 0.5f, Screen.width, h);
+            }
+            GUI.DrawTexture(r, tex, ScaleMode.StretchToFill, false);
+        }
+
+        static bool _shotDone;
+
+        void CaptureIfAsked()
+        {
+            if (_shotDone) return;
+            if (!System.IO.File.Exists(Application.dataPath + "/.shot")) return;
+            float need = System.IO.File.Exists(Application.dataPath + "/.uitest") ? 999f : 3f;
+            if ((Time.time - _t0) < need) return;
+            _shotDone = true;
+            ScreenCapture.CaptureScreenshot("F:/job/oc-game/unity/_shots/game_full.png");
+            Debug.Log("[月壤箱] 已截图 F:/job/oc-game/unity/_shots/game_full.png");
+        }
+
+        void DrawChips(RoomDef def)
+        {
+            int n = def.spots.Length;
+            if (chipRects.Length != n) chipRects = new Rect[n];
+
+            const float stripH = 46f;
+            float stripY = Screen.height - stripH;
+            GUI.color = new Color(0.05f, 0.07f, 0.08f, 0.55f);
+            GUI.DrawTexture(new Rect(0, stripY, Screen.width, stripH), Texture2D.whiteTexture);
+            GUI.color = Color.white;
+
+            var style = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 13,
+                alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = new Color(0.94f, 0.91f, 0.84f) }
+            };
+            var hotStyle = new GUIStyle(style) { normal = { textColor = new Color(1f, 0.78f, 0.45f) } };
+
+            float slot = Screen.width / (float)n;
+            var mouse = Event.current.mousePosition;
+            hoveredChip = -1;
+
+            for (int i = 0; i < n; i++)
+            {
+                var r = new Rect(i * slot, stripY, slot, stripH);
+                chipRects[i] = r;
+                bool hot = r.Contains(mouse);
+                if (hot) { hoveredChip = i; hovered = def.spots[i]; }
+                GUI.Label(r, def.spots[i].name, hot ? hotStyle : style);
+            }
+
+            for (int i = 0; i < n; i++)
+            {
+                if (chipRects[i].Contains(mouse) && Event.current.type == EventType.MouseDown && Event.current.button == 0)
+                {
+                    OpenSpot(def.spots[i]);
+                    Event.current.Use();
+                }
+            }
+        }
+        void OnGUI()
+        {
+            var def = Rooms[roomIndex];
+            Banner(def.title, 1.4f);
+
+            if (bgTex != null) DrawBackground(bgTex);
+
+            var chip = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 15,
+                fontStyle = FontStyle.Bold,
+                normal = { textColor = new Color(0.11f, 0.19f, 0.17f) }
+            };
+
+            CaptureIfAsked();
+            DrawRoomTabs();
+
+            var dayLine = "第 " + st.day + " 天　¥" + st.money + "　时辰 " + st.hours + "/6";
+            var repLine = "街坊 " + st.repStreet + "　同业 " + st.repTrade + "　官方 " + st.repOfficial + "　官面热度 " + st.officialHeat;
+            var repStyle = new GUIStyle(GUI.skin.label) { fontSize = 12 };
+            float hudW = Mathf.Max(chip.CalcSize(new GUIContent(dayLine)).x, repStyle.CalcSize(new GUIContent(repLine)).x) + 32f;
+            float hudX = Screen.width - hudW - 16f;
+            GUI.color = new Color(0.99f, 0.98f, 0.95f, 0.92f);
+            GUI.Box(new Rect(hudX, 16, hudW, 52), GUIContent.none);
+            GUI.color = Color.white;
+            GUI.Label(new Rect(hudX + 14f, 22, hudW - 20f, 24), dayLine, chip);
+            GUI.Label(new Rect(hudX + 14f, 46, hudW - 20f, 20), repLine, repStyle);
+
+            if (bgTex != null) DrawChips(def);
+
+            if (!string.IsNullOrEmpty(modelStatus))
+            {
+                GUI.color = new Color(0.72f, 0.20f, 0.14f, 0.95f);
+                GUI.Box(new Rect(Screen.width / 2 - 240, Screen.height - 110, 480, 40), GUIContent.none);
+                GUI.color = Color.white;
+                GUI.Label(new Rect(Screen.width / 2 - 230, Screen.height - 100, 460, 24), modelStatus, chip);
+            }
+
+            if (hovered.HasValue)
+            {
+                var s = hovered.Value;
+                var p = Input.mousePosition;
+                GUI.color = new Color(0.11f, 0.19f, 0.17f, 0.86f);
+                GUI.Box(new Rect(p.x + 16, Screen.height - p.y - 34, 210, 30), GUIContent.none);
+                GUI.color = Color.white;
+                GUI.Label(new Rect(p.x + 24, Screen.height - p.y - 29, 200, 22), s.name,
+                    new GUIStyle(GUI.skin.label) { fontSize = 13, fontStyle = FontStyle.Bold });
+            }
+
+            if (panel == "" && Time.time < _bannerUntil)
+            {
+                float k = Mathf.Clamp01((_bannerUntil - Time.time) / 0.6f);
+                var bs = new GUIStyle(GUI.skin.label)
+                {
+                    fontSize = 26,
+                    fontStyle = FontStyle.Bold,
+                    alignment = TextAnchor.MiddleCenter,
+                    normal = { textColor = new Color(0.99f, 0.98f, 0.95f) }
+                };
+                GUI.color = new Color(0f, 0f, 0f, 0.35f * k);
+                GUI.DrawTexture(new Rect(0, Screen.height * 0.42f, Screen.width, 56f), Texture2D.whiteTexture);
+                GUI.color = new Color(1f, 1f, 1f, k);
+                GUI.Label(new Rect(0, Screen.height * 0.42f + 10f, Screen.width, 36f), _bannerText, bs);
+                GUI.color = Color.white;
+            }
+
+            if (panel != "") DrawPanel();
+
+            if (opened.HasValue)
+            {
+                var s = opened.Value;
+                var w = 420f;
+                var r = new Rect(Screen.width / 2 - w / 2, Screen.height / 2 - 110, w, 220);
+                GUI.color = new Color(0.99f, 0.98f, 0.95f, 0.97f);
+                GUI.Box(r, GUIContent.none);
+                GUI.color = Color.white;
+                GUI.Label(new Rect(r.x + 24, r.y + 20, w - 48, 30), s.name,
+                    new GUIStyle(GUI.skin.label) { fontSize = 20, fontStyle = FontStyle.Bold });
+                GUI.Label(new Rect(r.x + 24, r.y + 58, w - 48, 60), s.desc,
+                    new GUIStyle(GUI.skin.label) { fontSize = 15, wordWrap = true });
+                GUI.Label(new Rect(r.x + 24, r.y + 160, w - 48, 22),
+                    "kind: " + s.kind + "　（Esc 关闭）",
+                    new GUIStyle(GUI.skin.label) { fontSize = 12 });
+            }
+        }
+
+        // ── 面板 ──────────────────────────────────────────────────────────────
+        static readonly Color Ink = new Color(0.11f, 0.19f, 0.17f);
+        static readonly Color Paper = new Color(0.99f, 0.98f, 0.95f);
+        static readonly Color Amber = new Color(1f, 0.62f, 0.27f);
+
+        static Texture2D _white;
+        static Texture2D White()
+        {
+            if (_white == null)
+            {
+                _white = new Texture2D(1, 1);
+                _white.SetPixel(0, 0, Color.white);
+                _white.Apply();
+            }
+            return _white;
+        }
+
+        GUIStyle Btn(bool primary = false)
+        {
+            var b = new GUIStyle(GUI.skin.button) { fontSize = 15, alignment = TextAnchor.MiddleCenter };
+            if (primary) b.normal.textColor = Paper;
+            return b;
+        }
+
+        static Texture2D _px;
+        static Texture2D Px()
+        {
+            if (_px == null)
+            {
+                _px = new Texture2D(1, 1);
+                _px.SetPixel(0, 0, Color.white);
+                _px.Apply();
+            }
+            return _px;
+        }
+
+        void Fill(Rect r, Color c)
+        {
+            var old = GUI.color;
+            GUI.color = c;
+            GUI.DrawTexture(r, Texture2D.whiteTexture);
+            GUI.color = old;
+        }
+
+        /// <summary>自绘按钮：纸面白底 + 细描边，悬停变琥珀边。</summary>
+        bool DrawBtn(Rect r, string label, bool primary = false)
+        {
+            bool hot = r.Contains(Event.current.mousePosition);
+            var face = primary
+                ? (hot ? new Color(0.17f, 0.28f, 0.25f) : new Color(0.13f, 0.22f, 0.20f))
+                : (hot ? new Color(0.95f, 0.92f, 0.85f) : new Color(0.98f, 0.97f, 0.94f));
+            Fill(r, face);
+            Fill(new Rect(r.x, r.y, r.width, 1f), hot ? Amber : new Color(0.78f, 0.76f, 0.70f));
+            Fill(new Rect(r.x, r.yMax - 1f, r.width, 1f), hot ? Amber : new Color(0.78f, 0.76f, 0.70f));
+            Fill(new Rect(r.x, r.y, 1f, r.height), hot ? Amber : new Color(0.78f, 0.76f, 0.70f));
+            Fill(new Rect(r.xMax - 1f, r.y, 1f, r.height), hot ? Amber : new Color(0.78f, 0.76f, 0.70f));
+
+            var st = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 15,
+                alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = primary ? Paper : Ink }
+            };
+            GUI.Label(r, label, st);
+
+            bool clicked = hot && Event.current.type == EventType.MouseDown && Event.current.button == 0;
+            if (clicked) { MenuScreen.Click(); Event.current.Use(); }
+            return clicked;
+        }
+
+        // ── 自测：.uitest 存在时按时间表把一天走完，并逐步截图 ───────────────
+        int _testStep = -1;
+        float _testAt;
+
+        void RunUiTest()
+        {
+            if (!System.IO.File.Exists(Application.dataPath + "/.uitest")) return;
+            float t = Time.time - _t0;
+            if (t < 3f) return;
+
+            if (_testStep < 0) { _testStep = 0; _testAt = t; }
+            if (_testStep > 22) return;
+            if (t - _testAt < 0.8f) return;
+            _testAt = t;
+
+            switch (_testStep)
+            {
+                case 0: panel = "counter"; break;
+                case 1: panel = "cases"; break;
+                case 2: st.StartCase(st.TodayCases()[1]); panel = "stage"; break;
+                case 3:
+                case 4:
+                case 5:
+                case 6:
+                case 7:
+                {
+                    if (st.active == null) { panel = "result"; break; }
+                    var opts = st.ChoicesFor(st.activeStage);
+                    int pick = 0;
+                    for (int i = 0; i < opts.Count; i++) { if (st.CanAfford(opts[i]) && st.CanChoose(opts[i])) { pick = i; break; } }
+                    var res = st.Choose(pick);
+                    panelBody = res.text;
+                    panel = res.done ? "result" : "stage";
+                    break;
+                }
+                case 8: panel = "ledger"; break;
+                case 9: panelBody = st.EndDay(); panel = "result"; break;
+                case 10: LoadRoom(1); panelBody = st.BookBuy(); panel = "result"; break;
+                case 11: panelBody = st.Save(); panel = "result"; break;
+                case 12: panelBody = st.Load(); panel = "result"; break;
+                case 13: LoadRoom(2); panelBody = st.CasinoBet(100, "big", "water").text; panel = "casino"; break;
+                case 14: LoadRoom(3); panelBody = st.UniLesson(); panel = "result"; break;
+                case 15: panelBody = st.UniArchive(); panel = "result"; break;
+                case 16: panelBody = st.UniHire(); panel = "result"; break;
+                case 17: LoadRoom(0); panel = "counter"; break;
+                case 18: panelBody = st.Hire("徒弟"); panel = "counter"; break;
+                case 19: panelBody = st.Hire("化妆师"); panel = "counter"; break;
+                case 20: panelBody = st.BuySupplies("香烛"); panel = "counter"; break;
+                case 21: panelBody = st.BuySupplies("寿衣料"); panel = "counter"; break;
+                case 22: panelBody = st.Bribe(); panel = "counter"; break;
+                default: panel = ""; break;
+            }
+
+            ScreenCapture.CaptureScreenshot($"F:/job/oc-game/unity/_shots/game_step{_testStep}.png");
+            Debug.Log($"[自测] step {_testStep} 面板={panel} 天={st.day} 钱={st.money} 时辰={st.hours} 单={st.casesDone} 正文={panelBody}");
+            _testStep++;
+        }
+
+        void OpenSpot(Hotspot s)
+        {
+            switch (s.kind)
+            {
+                case "counter": panel = "counter"; break;
+                case "board": panel = "brief"; break;
+                case "exit": panel = "ledger"; break;
+                case "table": panel = "casino"; break;
+                case "book_read": panelBody = st.BookRead(); panel = "result"; break;
+                case "book_buy": panelBody = st.BookBuy(); panel = "result"; break;
+                case "book_back": panelBody = "后间堆着没人领的骨灰盒，标签被潮气泡糊了。你站了一会儿，没动它们。"; panel = "result"; break;
+                case "uni_lesson": panelBody = st.UniLesson(); panel = "result"; break;
+                case "uni_archive": panelBody = st.UniArchive(); panel = "result"; break;
+                case "uni_hire": panelBody = st.UniHire(); panel = "result"; break;
+                case "stop":
+                case "door":
+                case "hall": panel = st.active != null ? "stage" : "cases"; break;
+                default: opened = s; break;
+            }
+        }
+
+        void DrawPanel()
+        {
+            float w = Mathf.Min(Screen.width - 80f, 720f);
+            float want = panel == "cases" ? 400f
+                : panel == "stage" ? 430f
+                : panel == "ledger" ? 380f
+                : panel == "casino" ? 300f
+                : panel == "brief" ? 300f
+                 : panel == "result" ? 300f
+                : panel == "counter" ? 460f
+                : 320f;
+            float h = Mathf.Min(Screen.height - 80f, want);
+            var r = new Rect((Screen.width - w) * 0.5f, (Screen.height - h) * 0.5f, w, h);
+
+            GUI.color = new Color(0f, 0f, 0f, 0.45f);
+            GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
+            GUI.color = Paper;
+            GUI.DrawTexture(r, Texture2D.whiteTexture);
+            GUI.color = Amber;
+            GUI.DrawTexture(new Rect(r.x, r.y, 4f, r.height), Texture2D.whiteTexture);
+            GUI.color = new Color(0.11f, 0.19f, 0.17f, 0.9f);
+            GUI.DrawTexture(new Rect(r.x, r.y, r.width, 2f), Texture2D.whiteTexture);
+            GUI.color = new Color(0.78f, 0.76f, 0.70f, 0.5f);
+            GUI.DrawTexture(new Rect(r.x + 20f, r.yMax - 18f, r.width - 40f, 1f), Texture2D.whiteTexture);
+            GUI.color = Color.white;
+
+            var title = new GUIStyle(GUI.skin.label) { fontSize = 21, fontStyle = FontStyle.Bold, normal = { textColor = Ink } };
+            var body = new GUIStyle(GUI.skin.label) { fontSize = 14, wordWrap = true, normal = { textColor = Ink } };
+            var dim = new GUIStyle(GUI.skin.label) { fontSize = 12, normal = { textColor = new Color(0.35f, 0.34f, 0.30f) } };
+            float x = r.x + 28f, y = r.y + 22f, inner = w - 56f;
+
+            switch (panel)
+            {
+                case "counter":
+                {
+                    GUI.Label(new Rect(x, y, inner, 30), "服务台", title);
+                    y += 40f;
+                    GUI.Label(new Rect(x, y, inner, 22), $"第 {st.day} 天 · 时辰 {st.hours}/6 · 钱 ¥{st.money}", dim);
+                    y += 32f;
+
+                    if (DrawBtn(new Rect(x, y, 200, 40), "接单（今天的四张案卷）", true)) panel = "cases";
+                    if (DrawBtn(new Rect(x + 208, y, 110, 40), "七日账")) panel = "ledger";
+                    if (DrawBtn(new Rect(x + 326, y, 120, 40), "打烊结账")) { panelBody = st.EndDay(); panel = "result"; st.Save(); MenuScreen.Play("haunt", 0.35f); }
+                    y += 48f;
+                    if (DrawBtn(new Rect(x, y, 96, 34), "存档")) { panelBody = st.Save(); panel = "result"; }
+                    if (DrawBtn(new Rect(x + 104, y, 96, 34), "读档")) { panelBody = st.Load(); panel = "result"; }
+                    y += 50f;
+
+                    if (st.CasinoReady && DrawBtn(new Rect(x, y, 240, 34), "去赌场见未型（demo 收尾）", true))
+                    { panelBody = st.AcceptDeal(); panel = "result"; }
+                    if (st.CasinoReady) y += 44f;
+
+                    GUI.Label(new Rect(x, y, inner, 26), $"上供 {st.tribute} 件　官面：{st.OfficialStage()}（热度 {st.officialHeat}）", dim);
+                    y += 30f;
+
+                    // ── 经营：雇人 / 采买 / 打点（数值在 Mgmt.cs，待 Ollie 定稿）──
+                    GUI.Label(new Rect(x, y, inner, 22), "今天的人手与耗材", new GUIStyle(dim) { fontStyle = FontStyle.Bold });
+                    y += 24f;
+                    if (DrawBtn(new Rect(x, y, 118, 32), "雇徒弟 ¥" + Mgmt.ApprenticeCost)) panelBody = st.Hire("徒弟");
+                    if (DrawBtn(new Rect(x + 124, y, 130, 32), "雇化妆师 ¥" + Mgmt.MakeupCost)) panelBody = st.Hire("化妆师");
+                    if (DrawBtn(new Rect(x + 260, y, 118, 32), "雇司仪 ¥" + Mgmt.EmceeCost)) panelBody = st.Hire("司仪");
+                    y += 38f;
+                    if (DrawBtn(new Rect(x, y, 150, 32), "买香烛 ¥" + Mgmt.IncenseCost)) panelBody = st.BuySupplies("香烛");
+                    if (DrawBtn(new Rect(x + 158, y, 170, 32), "买寿衣料 ¥" + Mgmt.ClothCost)) panelBody = st.BuySupplies("寿衣料");
+                    if (st.officialHeat >= Mgmt.BribeHeatGate && DrawBtn(new Rect(x + 336, y, 150, 32), "打点 ¥" + Mgmt.BribeCost)) panelBody = st.Bribe();
+                    y += 38f;
+                    GUI.Label(new Rect(x, y, inner, 22),
+                        $"徒弟 {(st.hiredApprentice ? "在" : "无")}　化妆师 {(st.hiredMakeup ? "在" : "无")}　司仪 {(st.hiredEmcee ? "在" : "无")}　香烛 {st.incense}　寿衣料 {st.cloth}",
+                        dim);
+                    y += 26f;
+                    if (!string.IsNullOrEmpty(st.mgmtNote)) { GUI.Label(new Rect(x, y, inner, 22), st.mgmtNote, body); y += 24f; }
+
+                    GUI.Label(new Rect(x, y, inner, 60),
+                        st.active != null
+                            ? $"手上正办着：{st.active.name}（{st.active.cause}），第 {st.activeStage + 1}/5 道工序。"
+                            : "手上没单。接一张，然后走收尸、洗身、穿衣、念辞、出殡。",
+                        body);
+                    break;
+                }
+
+                case "cases":
+                {
+                    GUI.Label(new Rect(x, y, inner, 30), "今天能接的单", title);
+                    y += 40f;
+                    if (st.hours < 1) { GUI.Label(new Rect(x, y, inner, 30), "时辰用完了，去打烊结账吧。", body); break; }
+                    if (st.active != null) { GUI.Label(new Rect(x, y, inner, 30), "手上还有一单没办完。", body); break; }
+
+                    var idx = st.TodayCases();
+                    float rowH = 58f;
+                    for (int k = 0; k < idx.Length; k++)
+                    {
+                        var c = st.DrawCase(idx[k]);
+                        var row = new Rect(x, y + k * rowH, inner, rowH - 6f);
+                        bool hot = row.Contains(Event.current.mousePosition);
+                        GUI.color = hot ? new Color(0.93f, 0.90f, 0.83f) : new Color(0.96f, 0.95f, 0.91f);
+                        GUI.DrawTexture(row, Texture2D.whiteTexture);
+                        GUI.color = Ink;
+                        GUI.Label(new Rect(row.x + 12, row.y + 5, inner - 24, 22),
+                            $"{c.name}　{(c.age > 0 ? c.age + " 岁" : "年龄不明")}　{c.cause}　身家 ¥{c.worth}",
+                            new GUIStyle(body) { fontStyle = FontStyle.Bold });
+                        GUI.Label(new Rect(row.x + 12, row.y + 27, inner - 24, 18),
+                            $"{c.family}　遗愿：{c.wish}", dim);
+                        GUI.color = Color.white;
+                        if (hot && Event.current.type == EventType.MouseDown)
+                        {
+                            st.StartCase(idx[k]);
+                            MenuScreen.Play("click");
+                            panel = "stage";
+                            Event.current.Use();
+                        }
+                    }
+                    if (DrawBtn(new Rect(x, r.y + h - 56f, 120, 34), "返回")) panel = "counter";
+                    break;
+                }
+
+                case "stage":
+                {
+                    var c = st.active;
+                    if (c == null) { panel = "cases"; break; }
+                    GUI.Label(new Rect(x, y, inner, 30), $"第 {st.activeStage + 1}/5 道 · {GameState.Stages[Mathf.Clamp(st.activeStage, 0, 4)]}", title);
+                    y += 36f;
+                    GUI.Label(new Rect(x, y, inner, 22), $"{c.name}（{c.cause}）　怨气 {c.grudgeNow}/100　身家 ¥{c.worth}", dim);
+                    y += 24f;
+                    GUI.Label(new Rect(x, y, inner, 22), $"时辰 {st.hours}/6　钱 ¥{st.money}", dim);
+                    y += 26f;
+
+                    for (int i = 0; i < GameState.Stages.Length; i++)
+                    {
+                        var dot = new Rect(x + i * 92f, y, 84f, 4f);
+                        bool done2 = i < st.activeStage;
+                        bool now2 = i == st.activeStage;
+                        Fill(dot, done2 ? new Color(0.13f, 0.22f, 0.20f) : now2 ? Amber : new Color(0.82f, 0.80f, 0.75f));
+                        GUI.Label(new Rect(dot.x, y + 8f, 84f, 18f), GameState.Stages[i], new GUIStyle(dim) { alignment = TextAnchor.MiddleLeft });
+                    }
+                    y += 36f;
+
+                    var bar = new Rect(x, y, inner, 6f);
+                    Fill(bar, new Color(0.86f, 0.84f, 0.79f));
+                    Fill(new Rect(bar.x, bar.y, inner * (c.grudgeNow / 100f), 6f),
+                        c.grudgeNow >= 85 ? new Color(0.72f, 0.20f, 0.14f) : c.grudgeNow >= 50 ? Amber : new Color(0.30f, 0.46f, 0.40f));
+                    y += 16f;
+
+                    var opts = st.ChoicesFor(st.activeStage);
+                    float rowH = 62f;
+                    for (int i = 0; i < opts.Count; i++)
+                    {
+                        var o = opts[i];
+                        bool can = st.CanAfford(o) && st.CanChoose(o);
+                        var row = new Rect(x, y + i * rowH, inner, rowH - 8f);
+                        bool hot = row.Contains(Event.current.mousePosition);
+                        GUI.color = hot && can ? new Color(0.93f, 0.90f, 0.83f) : new Color(0.96f, 0.95f, 0.91f);
+                        GUI.DrawTexture(row, Texture2D.whiteTexture);
+                        GUI.color = can ? Ink : new Color(0.55f, 0.54f, 0.50f);
+                        GUI.Label(new Rect(row.x + 14, row.y + 7, inner - 28, 22),
+                            $"{i + 1}. {o.label}", new GUIStyle(body) { fontStyle = FontStyle.Bold });
+                        string cost = o.cost > 0 ? $"时辰 {o.cost}" : "不花时辰";
+                        string moneyTxt = o.money != 0 ? $"　钱 {(o.money > 0 ? "+" : "")}{o.money}" : "";
+                        string grudge = o.grudge != 0 ? $"　怨气 {(o.grudge > 0 ? "+" : "")}{o.grudge}" : "";
+                        GUI.Label(new Rect(row.x + 14, row.y + 30, inner - 28, 18), cost + moneyTxt + grudge, dim);
+                        GUI.color = Color.white;
+                        if (hot && can && Event.current.type == EventType.MouseDown)
+                        {
+                            var res = st.Choose(i);
+                            MenuScreen.Play(res.done ? "coin" : "click", res.done ? 0.45f : 0.5f);
+                            panelBody = res.text;
+                            panel = res.done ? "result" : "stage";
+                            Event.current.Use();
+                        }
+                    }
+                    break;
+                }
+
+                case "result":
+                {
+                    GUI.Label(new Rect(x, y, inner, 30), "这一手", title);
+                    y += 44f;
+                    GUI.Label(new Rect(x, y, inner, 220), panelBody, body);
+                    if (DrawBtn(new Rect(x, r.y + h - 56f, 140, 34), "继续", true)) panel = "";
+                    break;
+                }
+
+                case "ledger":
+                {
+                    GUI.Label(new Rect(x, y, inner, 30), "七日账", title);
+                    y += 42f;
+                    int total = 0;
+                    var byDay = new Dictionary<int, int>();
+                    var byCases = new Dictionary<int, int>();
+                    var order = new List<int>();
+                    foreach (var w2 in st.week)
+                    {
+                        total += w2["earned"];
+                        int d = w2["day"];
+                        if (!byDay.ContainsKey(d)) { byDay[d] = 0; byCases[d] = 0; order.Add(d); }
+                        byDay[d] += w2["earned"];
+                        byCases[d] += 1;
+                    }
+                    GUI.Label(new Rect(x, y, inner, 24),
+                        st.week.Count == 0 ? "这一周还没开张。" : $"已办 {st.casesDone} 单，累计进账 ¥{total}。", body);
+                    y += 28f;
+                    foreach (var d in order)
+                    {
+                        GUI.Label(new Rect(x, y, inner, 20), $"第 {d} 日 · 办 {byCases[d]} 单 · 进 ¥{byDay[d]}", dim);
+                        y += 20f;
+                    }
+                    y += 6f;
+                    GUI.Label(new Rect(x, y, inner, 22), "官面：" + st.OfficialStage() + $"（热度 {st.officialHeat}）", dim);
+                    y += 24f;
+                    string rival = "";
+                    foreach (var kv in st.rivals) rival += $"{kv.Key} {kv.Value}　";
+                    GUI.Label(new Rect(x, y, inner, 22), rival, dim);
+                    if (DrawBtn(new Rect(x, r.y + h - 56f, 120, 34), "返回")) panel = "counter";
+                    break;
+                }
+
+                case "casino":
+                {
+                    GUI.Label(new Rect(x, y, inner, 30), "赌桌", title);
+                    y += 34f;
+                    GUI.Label(new Rect(x, y, inner, 22), $"钱 ¥{st.money}　时辰 {st.hours}/6", dim);
+                    y += 30f;
+                    GUI.Label(new Rect(x, y, inner, 60), panelBody, body);
+                    y += 62f;
+
+                    if (DrawBtn(new Rect(x, y, 120, 36), "¥100 押大")) panelBody = st.CasinoBet(100, "big", "straight").text;
+                    if (DrawBtn(new Rect(x + 128, y, 120, 36), "¥100 押小")) panelBody = st.CasinoBet(100, "small", "straight").text;
+                    if (DrawBtn(new Rect(x + 256, y, 170, 36), "¥200 当托放水", true)) panelBody = st.CasinoBet(200, "big", "water").text;
+                    break;
+                }
+
+                case "brief":
+                {
+                    GUI.Label(new Rect(x, y, inner, 30), "业务公示", title);
+                    y += 44f;
+                    GUI.Label(new Rect(x, y, inner, 220),
+                        "一单五道：收尸、洗身、穿衣、念辞、出殡。\n每道选一种干法，改的是怨气；怨气过了 85，夜里尸身不安生，官面要来人。\n时辰用光就打烊，钱和口碑第二天还在。",
+                        body);
+                    if (DrawBtn(new Rect(x, r.y + h - 56f, 120, 34), "返回")) panel = "counter";
+                    break;
+                }
+            }
+        }
+
+        class HotspotTag : MonoBehaviour
+        {
+            public Hotspot spot;
+        }
+    }
+}

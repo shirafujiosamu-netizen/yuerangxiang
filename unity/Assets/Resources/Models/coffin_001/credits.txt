@@ -1,0 +1,18 @@
+This document is for informational purposes only.
+If redistributing this archive, please include this file so that others may benefit from 
+the information included herein.
+
+All included files are, or have previously been, released into the public domain - CC0
+No credit is required.
+
+Included is the blend file, as well as obj exports of each piece.
+
+The textures were derived from:
+(They have been modified)
+https://opengameart.org/content/wood-texture-tiles - JCW - cc0
+https://opengameart.org/node/10172 - arikel - cc0
+
+
+Preview image 1:
+Blender 2.83.5
+
